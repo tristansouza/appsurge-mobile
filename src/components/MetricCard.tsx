@@ -1,0 +1,6 @@
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, globalStyles, radius, shadow, spacing } from '../theme';
+
+export function MetricCard({ label, value, change, icon, color = colors.accent }: { label: string; value: string; change: string; icon: string; color?: string }) { return <View style={styles.card}><View style={[styles.icon, { backgroundColor: `${color}18` }]}><Text style={{ color, fontSize: 17 }}>{icon}</Text></View><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value}</Text><Text style={[styles.change, { color }]}>{change} <Text style={styles.period}>vs last week</Text></Text></View>; }
+const styles = StyleSheet.create({ card: { flex: 1, minHeight: 135, padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md, ...shadow }, icon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }, label: { color: colors.muted, fontSize: 12, fontWeight: '600' }, value: { color: colors.ink, fontSize: 22, fontWeight: '800', marginTop: 5 }, change: { fontSize: 11, fontWeight: '800', marginTop: 7 }, period: { color: colors.subtle, fontWeight: '500' } });

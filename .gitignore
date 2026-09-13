@@ -1,0 +1,25 @@
+node_modules/
+.expo/
+dist/
+web-build/
+android/app/build/
+android/build/
+android/.gradle/
+android/app/.cxx/
+ios/Pods/
+ios/build/
+
+# Env files — never commit secrets
+.env
+.env.local
+*.keystore
+!debug.keystore
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Freebuff local state
+.freebuff/
+.idea/

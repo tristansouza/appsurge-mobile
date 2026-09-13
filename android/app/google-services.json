@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "745082372444",
+    "project_id": "app-surge",
+    "storage_bucket": "app-surge.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:745082372444:android:7b078476087aa8cbd4c199",
+        "android_client_info": {
+          "package_name": "com.appsurge"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAs-UCfBxTQCw18RdWN5DZxK1anc7buhyI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:745082372444:android:6c3fe2249410995fd4c199",
+        "android_client_info": {
+          "package_name": "dev.appsurge.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAs-UCfBxTQCw18RdWN5DZxK1anc7buhyI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

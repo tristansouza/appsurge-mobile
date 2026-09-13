@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Appsurge",
+    "slug": "appsurge-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./appsurgeicon.png",
+    "scheme": "appsurge",
+    "newArchEnabled": false,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FAF6F0"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.appsurge.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF6F0"
+      },
+      "package": "dev.appsurge.mobile"
+    },
+    "plugins": [
+      "expo-status-bar",
+      "@react-native-google-signin/google-signin",
+      "expo-web-browser"
+    ]
+  }
+}
