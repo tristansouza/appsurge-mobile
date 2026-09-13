@@ -30,6 +30,12 @@
       "expo-status-bar",
       "@react-native-google-signin/google-signin",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "58b50c42-a412-43d9-b8cc-7a0849040024"
+      }
+    },
+    "owner": "tristansouza2"
   }
 }
