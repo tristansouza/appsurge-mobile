@@ -1,0 +1,14 @@
+steps:
+  - echo: Scene 4 — Settings: connected platform accounts list.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - tap:
+      text: Settings
+  - await:
+      visible:
+        text: CONNECTED ACCOUNTS
+  - wait: 900
+  - await:
+      idle: true

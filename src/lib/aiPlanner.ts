@@ -75,7 +75,10 @@ export async function recommendPlatformsAndHashtags(input: {
     '{"platforms":["tiktok","instagram"],"hashtags":["appdeveloper","indiedev"],"rationale":"one or two sentences explaining the picks"}',
   ].join('\n');
 
-  const raw = await generateAiContent(prompt, 700);
+  // Generous cap: thinking tokens count against maxOutputTokens on the
+  // 3.x model family, and the JSON body itself is small — headroom prevents
+  // silent truncation, not waste.
+  const raw = await generateAiContent(prompt, 2048);
   const parsed = jsonArray(raw);
   return {
     platforms: coercePlatforms(parsed?.platforms),
@@ -118,7 +121,8 @@ export async function generateWeeklyPlan(input: {
     '[{"platform":"tiktok","day":1,"hook":"...","caption":"...","hashtags":["..."]}]',
   ].join('\n');
 
-  const raw = await generateAiContent(prompt, 2600);
+  // 7 slots of structured JSON plus thinking headroom (see note above).
+  const raw = await generateAiContent(prompt, 6144);
   const parsed = jsonArray(raw);
   const slotsRaw = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.slots) ? parsed.slots : [];
   const slots: PlannedSlot[] = slotsRaw.slice(0, 7).map((slot: any, index: number) => {

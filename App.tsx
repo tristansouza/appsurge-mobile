@@ -18,14 +18,20 @@ import { Linking } from 'react-native';
 
 const ONBOARDING_KEY = '@appsurge/onboarding_seen_v1';
 
+// Compile-time flag (app.json extra): demo/store-capture builds skip auth,
+// email verification, and setup, and open straight into the main app with
+// the bundled demo dataset. Production builds never see this.
+const DEMO_BUILD = String(process.env.EXPO_PUBLIC_DEMO_BUILD || '') === '1';
+
 const queryClient = new QueryClient();
 const Stack = createNativeStackNavigator();
 const navTheme = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: colors.canvas, card: colors.canvas, text: colors.ink, primary: colors.accent, border: 'transparent' } };
 
 // 'unseen' → show the first-launch onboarding; 'seen' → straight to auth/app.
 function useOnboardingState(): ['checking' | 'unseen' | 'seen', () => void] {
-  const [state, setState] = React.useState<'checking' | 'unseen' | 'seen'>('checking');
+  const [state, setState] = React.useState<'checking' | 'unseen' | 'seen'>(DEMO_BUILD ? 'seen' : 'checking');
   React.useEffect(() => {
+    if (DEMO_BUILD) return;
     let active = true;
     AsyncStorage.getItem(ONBOARDING_KEY)
       .then((value) => { if (active) setState(value === 'true' ? 'seen' : 'unseen'); })
@@ -43,9 +49,9 @@ function useOnboardingState(): ['checking' | 'unseen' | 'seen', () => void] {
 // check result (offline / Firestore unreachable) falls through to the app so
 // a connectivity blip never locks someone out of their own content.
 function useAppSetup(enabled: boolean): ['checking' | 'needed' | 'ready' | 'unknown', () => void] {
-  const [state, setState] = React.useState<'checking' | 'needed' | 'ready' | 'unknown'>('checking');
+  const [state, setState] = React.useState<'checking' | 'needed' | 'ready' | 'unknown'>(DEMO_BUILD ? 'ready' : 'checking');
   React.useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || DEMO_BUILD) return;
     let active = true;
     loadAppRecord().then((record) => {
       if (active) setState(record ? 'ready' : 'needed');

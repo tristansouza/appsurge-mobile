@@ -1,0 +1,14 @@
+executionPrerequisite: >-
+  App on the Queue screen after an approval; this segment jumps to Analytics
+  for the results shot.
+
+steps:
+  - echo: Preview segment 3 — Analytics: the momentum dashboard as the payoff shot.
+  - tap:
+      text: Analytics
+  - await:
+      visible:
+        text: Your momentum
+  - wait: 1400
+  - await:
+      idle: true

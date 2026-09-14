@@ -137,24 +137,43 @@ function parseTokenResponse(text: string, statusLabel: string): PlatformTokenRes
 
 // ---- Gemini AI proxy -----------------------------------------------------
 
-export async function generateAiContent(prompt: string, maxOutputTokens = 1024): Promise<string> {
-  const res = await gatewayFetch('/gemini/v1beta/models/gemini-2.5-flash:generateContent', {
+// `gemini-flash-latest` is Google's alias that always points at the current
+// GA flash model — pinned version names (gemini-2.5-flash, gemini-2.0-flash)
+// 404 for new API keys once Google deprecates them. Override per build via
+// EXPO_PUBLIC_GEMINI_MODEL if a release ever needs to pin one.
+const GEMINI_MODEL = (process.env.EXPO_PUBLIC_GEMINI_MODEL ?? 'gemini-flash-latest').trim();
+
+export async function generateAiContent(prompt: string, maxOutputTokens = 4096): Promise<string> {
+  const res = await gatewayFetch(`/gemini/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: 'POST',
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      // Thinking tokens count against maxOutputTokens on the 3.x family;
+      // caps that leave no headroom silently truncate (or empty) responses.
       generationConfig: { temperature: 0.8, maxOutputTokens },
     }),
-    timeoutMs: 45_000,
+    timeoutMs: 60_000,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`AI request failed: HTTP ${res.status} ${text.slice(0, 160)}`);
+    let detail = text.slice(0, 200);
+    try {
+      const parsed = JSON.parse(text);
+      detail = parsed?.error?.message ?? detail;
+    } catch {
+      // Keep raw text.
+    }
+    throw new Error(`AI request failed: HTTP ${res.status} ${detail}`);
   }
   const data: any = await res.json();
-  const parts = data?.candidates?.[0]?.content?.parts;
+  const candidate = data?.candidates?.[0];
+  const parts = candidate?.content?.parts;
   const text = Array.isArray(parts)
-    ? parts.map((part: any) => part?.text ?? '').join('').trim()
+    ? parts.map((part: any) => (typeof part?.text === 'string' ? part.text : '')).join('').trim()
     : '';
-  if (!text) throw new Error('AI returned an empty response.');
+  if (!text) {
+    const finishReason = candidate?.finishReason ?? data?.promptFeedback?.blockReason;
+    throw new Error(finishReason ? `AI response ended early (${finishReason}). Try again.` : 'AI returned an empty response.');
+  }
   return text;
 }

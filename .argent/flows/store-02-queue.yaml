@@ -1,0 +1,14 @@
+steps:
+  - echo: Scene 2 — Review queue: the AI plan as editable cards with Approve/Reject actions.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - tap:
+      text: Queue
+  - await:
+      visible:
+        text: Review queue
+  - wait: 900
+  - await:
+      idle: true

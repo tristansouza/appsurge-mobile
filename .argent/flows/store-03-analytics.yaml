@@ -1,0 +1,14 @@
+steps:
+  - echo: Scene 3 — Analytics dashboard with the reach chart and top posts.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - tap:
+      text: Analytics
+  - await:
+      visible:
+        text: Your momentum
+  - wait: 900
+  - await:
+      idle: true

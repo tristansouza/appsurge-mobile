@@ -1,0 +1,14 @@
+steps:
+  - echo: Preview segment 1 — open on Home, pause so the screen reads, then scroll to show content.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - wait: 1400
+  - await:
+      idle: true
+  - tool: gesture-swipe
+    args: { fromX: 0.5, fromY: 0.68, toX: 0.5, toY: 0.38, durationMs: 700 }
+  - wait: 1100
+  - await:
+      idle: true

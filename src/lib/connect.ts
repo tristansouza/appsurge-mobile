@@ -8,13 +8,30 @@
 // is exchanged for tokens through the gateway Worker (secrets stay in
 // Cloudflare) → the connection is persisted to Firestore.
 //
+// Timing model (why the outcome bus exists):
+//   • Android (Chrome Custom Tab): the deep link fires WHILE the browser
+//     tab is still open. App.tsx's global Linking listener consumes it.
+//     `openAuthSessionAsync` only resolves later, when the tab is closed —
+//     usually as `dismiss`. So the awaiting caller must NOT trust the
+//     browser result; it waits for the published outcome instead.
+//   • iOS (ASWebAuthenticationSession): the session intercepts the custom-
+//     scheme redirect and resolves `success` with the URL directly. The
+//     global listener may never see a Linking event, so the caller
+//     consumes the URL itself.
+//   • Race: on some Android versions the browser resolves `dismiss` a beat
+//     before the deep-link event is dispatched. A short grace window
+//     covers that before reporting `cancelled`.
+//
+// Every consumed URL is deduped, so the global listener and the flow-local
+// consumer can never double-exchange the same authorization code.
+//
 // X has no OAuth support in the gateway, so it is offered as a manual
 // "connect on desktop" flow.
 
 import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
-import { generateAiContent, getOAuthClientIds, exchangeCodeForTokens, upgradeInstagramToken } from './gateway';
+import { getOAuthClientIds, exchangeCodeForTokens, upgradeInstagramToken } from './gateway';
 import {
   PLATFORM_CONFIGS,
   generatePkce,
@@ -33,13 +50,40 @@ type PendingHandoff = {
   startedAt: number;
 };
 
-export type ConnectOutcome =
-  | { kind: 'connected'; platform: MobilePlatform; record: ConnectionRecord }
-  | { kind: 'cancelled' }
-  | { kind: 'error'; message: string };
-
 let pending: PendingHandoff | null = null;
 let webSessionStarted = false;
+
+
+
+export type ConnectOutcome =
+  | { kind: 'connected'; platform: MobilePlatform; record: ConnectionRecord }
+  | { kind: 'error'; platform?: string; message: string }
+  | { kind: 'cancelled' };
+
+// ---- Outcome bus -----------------------------------------------------------
+// Deep links can be consumed by the global handler (App.tsx) or by an
+// awaiting connect flow. Whoever consumes publishes the outcome; screens
+// subscribe so they always hear the result no matter who consumed.
+
+type OutcomeListener = (outcome: ConnectOutcome) => void;
+const outcomeListeners = new Set<OutcomeListener>();
+
+export function subscribeToConnectOutcomes(listener: OutcomeListener): () => void {
+  outcomeListeners.add(listener);
+  return () => {
+    outcomeListeners.delete(listener);
+  };
+}
+
+function publishOutcome(outcome: ConnectOutcome): void {
+  for (const listener of [...outcomeListeners]) {
+    try {
+      listener(outcome);
+    } catch {
+      // A broken listener must never break the connect flow.
+    }
+  }
+}
 
 // ---- Deep-link handling ---------------------------------------------------
 
@@ -129,64 +173,101 @@ export async function startPlatformConnect(platform: MobilePlatform): Promise<Co
 
     rememberPending({ platform, state, codeVerifier: pkce?.verifier ?? null, startedAt: Date.now() });
 
-    // In-app browser session: on Android Chrome Custom Tab, on iOS the
-    // Safari view controller. When the relay page deep-links back into the
-    // app, Android dismisses the custom tab automatically.
     webSessionStarted = true;
-    const result = await WebBrowser.openAuthSessionAsync(url.toString(), redirectUri);
+    const browserSession = WebBrowser.openAuthSessionAsync(
+      url.toString(),
+      redirectUri,
+    ).catch(() => null);
+
+    // Outcome gate: resolves as soon as ANY consumer publishes an outcome
+    // (global deep-link handler or the local consume below).
+    const outcomeGate = waitForOutcome(platform, 150_000);
+
+    let outcome: ConnectOutcome | null = null;
+
+    // iOS resolves the session with the redirect URL directly.
+    const browserResult = await browserSession;
+    const successUrl =
+      browserResult && browserResult.type === 'success' && 'url' in browserResult
+        ? browserResult.url
+        : null;
+    if (successUrl) {
+      outcome = await consumeOAuthDeepLink(successUrl);
+    }
+
+    if (!outcome) {
+      // Browser session ended without handing us the URL (Android: the tab
+      // dismissed via deep link or the user backed out). The deep link has
+      // usually already been consumed by the global handler — but on some
+      // Android builds it lands a beat later. Short grace window, then
+      // report cancelled.
+      outcome = await Promise.race([
+        outcomeGate,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+      ]);
+    }
+
     webSessionStarted = false;
-
-    if (result.type === 'cancel' || result.type === 'dismiss') {
-      return { kind: 'cancelled' };
-    }
-
-    // iOS may hand the redirect URL back directly.
-    if (result.type === 'success' && result.url) {
-      return await consumeOAuthDeepLink(result.url);
-    }
-
-    // Android delivers the redirect as a deep link instead — wait for the
-    // app to be resumed with the appsurge:// URL.
-    const deepLinkUrl = await waitForDeepLink(20_000);
-    if (!deepLinkUrl) return { kind: 'cancelled' };
-    return await consumeOAuthDeepLink(deepLinkUrl);
+    return outcome ?? { kind: 'cancelled' };
   } catch (error) {
     webSessionStarted = false;
     return { kind: 'error', message: error instanceof Error ? error.message : 'Could not start the connection flow.' };
   }
 }
 
-function waitForDeepLink(timeoutMs: number): Promise<string | null> {
+function waitForOutcome(platform: MobilePlatform, timeoutMs: number): Promise<ConnectOutcome | null> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (url: string | null) => {
+    const finish = (outcome: ConnectOutcome | null) => {
       if (settled) return;
       settled = true;
-      subscription.remove();
+      unsubscribe();
       clearTimeout(timer);
-      resolve(url);
+      resolve(outcome);
     };
-    const subscription = Linking.addEventListener('url', (event) => {
-      if (isOAuthDeepLink(event.url)) finish(event.url);
+    const unsubscribe = subscribeToConnectOutcomes((outcome) => {
+      // Errors without a platform (e.g. unparseable redirect) belong to
+      // whatever flow is active; platform-tagged outcomes must match.
+      if (outcome.kind === 'connected' && outcome.platform !== platform) return;
+      if (outcome.kind === 'error' && outcome.platform && outcome.platform !== platform) return;
+      finish(outcome);
     });
     const timer = setTimeout(() => finish(null), timeoutMs);
-    // The deep link may have arrived before the listener attached.
-    Linking.getInitialURL().then((url) => {
-      if (url && isOAuthDeepLink(url)) finish(url);
-    }).catch(() => undefined);
   });
 }
 
-export async function consumeOAuthDeepLink(url: string): Promise<ConnectOutcome> {
+export async function consumeOAuthDeepLink(url: string): Promise<ConnectOutcome | null> {
+  // The global handler and an awaiting flow can observe the same deep
+  // link. Only the first consumer acts; the rest are silent no-ops.
+  if (isDuplicateConsumption(url)) return null;
+
   const parsed = parseOAuthDeepLink(url);
-  if (!parsed) return { kind: 'error', message: 'Unrecognized sign-in redirect.' };
-  if (parsed.error) return { kind: 'error', message: `${parsed.platform} returned an error: ${parsed.error}` };
-  if (!parsed.code) return { kind: 'error', message: `${parsed.platform} did not return an auth code.` };
+  if (!parsed) {
+    const outcome: ConnectOutcome = { kind: 'error', message: 'Unrecognized sign-in redirect.' };
+    publishOutcome(outcome);
+    return outcome;
+  }
+  if (parsed.error) {
+    const outcome: ConnectOutcome = { kind: 'error', platform: parsed.platform, message: `${parsed.platform} returned an error: ${parsed.error}` };
+    publishOutcome(outcome);
+    return outcome;
+  }
+  if (!parsed.code) {
+    const outcome: ConnectOutcome = { kind: 'error', platform: parsed.platform, message: `${parsed.platform} did not return an auth code.` };
+    publishOutcome(outcome);
+    return outcome;
+  }
 
   const handoff = await takePending();
-  if (!handoff) return { kind: 'error', message: 'This sign-in attempt expired. Please try connecting again.' };
+  if (!handoff) {
+    const outcome: ConnectOutcome = { kind: 'error', platform: parsed.platform, message: 'This sign-in attempt expired. Please try connecting again.' };
+    publishOutcome(outcome);
+    return outcome;
+  }
   if (parsed.state && handoff.state && parsed.state !== handoff.state) {
-    return { kind: 'error', message: 'Sign-in state mismatch. Please try connecting again.' };
+    const outcome: ConnectOutcome = { kind: 'error', platform: parsed.platform, message: 'Sign-in state mismatch. Please try connecting again.' };
+    publishOutcome(outcome);
+    return outcome;
   }
 
   try {
@@ -219,10 +300,33 @@ export async function consumeOAuthDeepLink(url: string): Promise<ConnectOutcome>
     // moment their first platform is live.
     void buildWeeklyPlan().catch(() => undefined);
 
-    return { kind: 'connected', platform: handoff.platform, record };
+    const outcome: ConnectOutcome = { kind: 'connected', platform: handoff.platform, record };
+    publishOutcome(outcome);
+    return outcome;
   } catch (error) {
-    return { kind: 'error', message: error instanceof Error ? error.message : 'Token exchange failed.' };
+    const outcome: ConnectOutcome = {
+      kind: 'error',
+      platform: parsed.platform,
+      message: error instanceof Error ? error.message : 'Token exchange failed.',
+    };
+    publishOutcome(outcome);
+    return outcome;
   }
+}
+
+// ---- Duplicate-consumption guard -------------------------------------------
+
+const CONSUMED_TTL_MS = 60_000;
+const consumedUrls = new Map<string, number>();
+
+function isDuplicateConsumption(url: string): boolean {
+  const now = Date.now();
+  for (const [seenUrl, seenAt] of consumedUrls) {
+    if (now - seenAt > CONSUMED_TTL_MS) consumedUrls.delete(seenUrl);
+  }
+  if (consumedUrls.has(url)) return true;
+  consumedUrls.set(url, now);
+  return false;
 }
 
 // Called from the root navigator when the app boots straight into a deep link.

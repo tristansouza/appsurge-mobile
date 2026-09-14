@@ -21,7 +21,7 @@ import {
   saveAppRecord,
   type AppRecord,
 } from '../lib/cloudStore';
-import { startPlatformConnect, type ConnectOutcome } from '../lib/connect';
+import { startPlatformConnect, subscribeToConnectOutcomes, type ConnectOutcome } from '../lib/connect';
 import { PLATFORM_CONFIGS, humanLabel } from '../lib/platformAuth';
 import { PlatformId } from '../types';
 import { colors, radius, shadow, spacing } from '../theme';
@@ -80,19 +80,28 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
     return () => { active = false; };
   }, []);
 
-  const handleConnectOutcome = (outcome: ConnectOutcome) => {
-    if (outcome.kind === 'connected') {
-      setConnected((current) => ({ ...current, [outcome.platform]: true }));
-    } else if (outcome.kind === 'error') {
-      setError(outcome.message);
-    }
-  };
+  // Connect outcomes arrive via the bus in connect.ts — the deep link may be
+  // consumed by the global handler (App.tsx) while the browser session is
+  // still open on Android, so the screen must listen rather than rely on the
+  // startPlatformConnect return value alone.
+  React.useEffect(() => {
+    const unsubscribe = subscribeToConnectOutcomes((outcome: ConnectOutcome) => {
+      if (outcome.kind === 'connected') {
+        setConnected((current) => ({ ...current, [outcome.platform]: true }));
+        setError('');
+      } else if (outcome.kind === 'error') {
+        setError(outcome.message);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   const handleConnect = async (platform: (typeof CONNECTABLE_PLATFORMS)[number]) => {
     setError('');
     setConnecting(platform);
     try {
-      handleConnectOutcome(await startPlatformConnect(platform));
+      await startPlatformConnect(platform);
+      // Outcome is delivered via the subscription above.
     } finally {
       setConnecting(null);
     }

@@ -23,3 +23,7 @@ Thumbs.db
 # Freebuff local state
 .freebuff/
 .idea/
+
+# goldie store-asset outputs (config + flows are committed)
+goldie/out/
+goldie/*.apk

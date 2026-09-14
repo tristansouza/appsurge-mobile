@@ -1,0 +1,19 @@
+steps:
+  - echo: Scene 5 — Composer: the edit-post sheet the review flow opens.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - tap:
+      text: Queue
+  - await:
+      visible:
+        text: Review queue
+  - tap:
+      text: Edit
+  - await:
+      visible:
+        text: Edit post
+  - wait: 900
+  - await:
+      idle: true

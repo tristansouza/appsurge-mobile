@@ -1,0 +1,9 @@
+steps:
+  - echo: Scene 1 — Home with the weekly-plan notice and metric cards. Screenshot 1 and preview open.
+  - launch: dev.appsurge.mobile
+  - await:
+      visible:
+        text: Good
+  - wait: 900
+  - await:
+      idle: true

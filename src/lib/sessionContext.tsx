@@ -1,5 +1,16 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User } from '../types';
+
+// Demo build (EXPO_PUBLIC_DEMO_BUILD=1, set via app.json extra): no Firebase,
+// no network — just a realistic signed-in user so store captures show real
+// content. Production builds never read this flag.
+const DEMO_BUILD = String(process.env.EXPO_PUBLIC_DEMO_BUILD || '') === '1';
+const DEMO_USER: User = {
+  id: 'demo-user',
+  name: 'Tristan Souza',
+  email: 'tristan@app-surge.dev',
+  emailVerified: true,
+};
 import { firebaseErrorMessage, resetPassword, signIn, signOut, signUp, signInWithGoogle, isGoogleAvailable, subscribeToSession, resendVerificationEmail, reloadVerificationState } from './session';
 
 type SessionContextValue = {
@@ -28,6 +39,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    if (DEMO_BUILD) {
+      setUser(DEMO_USER);
+      setLoading(false);
+      return;
+    }
     let active = true;
     const unsubscribe = subscribeToSession((nextUser) => {
       if (active) {
@@ -73,6 +89,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }),
     checkVerification: async () => {
       try {
+        if (DEMO_BUILD) return true;
         const verified = await reloadVerificationState();
         if (verified && user) setUser({ ...user, emailVerified: true });
         return verified;
