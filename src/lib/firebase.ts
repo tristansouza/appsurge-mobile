@@ -21,6 +21,12 @@ const firebaseConfig = {
 // Public web OAuth client used for Google sign-in (safe to embed).
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
+// iOS-native OAuth client. Google auto-registers the
+// com.googleusercontent.apps.<id>:// redirect for every OAuth client, so the
+// web client's ID works as the iOS client ID — as long as its reversed form
+// is registered as a URL scheme in the iOS build (handled via app.json).
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? googleWebClientId;
+
 const missing = Object.entries(firebaseConfig).filter(([, value]) => !value).map(([key]) => key);
 if (missing.length) {
   console.warn(`Firebase config is incomplete. Missing: ${missing.join(', ')}. Copy .env.example to .env and restart Expo.`);
@@ -36,12 +42,22 @@ try {
 }
 
 export const isGoogleSignInConfigured = Boolean(googleWebClientId);
+export const googleIosUrlScheme = googleIosClientId
+  ? `com.googleusercontent.apps.${googleIosClientId.replace('.apps.googleusercontent.com', '')}`
+  : null;
 
 let googleConfigured = false;
 export async function configureGoogleSignIn() {
   if (!googleWebClientId || googleConfigured) return googleConfigured;
   const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
-  GoogleSignin.configure({ webClientId: googleWebClientId, offlineAccess: false });
+  const { Platform } = await import('react-native');
+  GoogleSignin.configure({
+    webClientId: googleWebClientId,
+    // iOS requires its own client ID; without it the SDK throws
+    // "failed to determine clientID" at signIn() time.
+    ...(Platform.OS === 'ios' && googleIosClientId ? { iosClientId: googleIosClientId } : {}),
+    offlineAccess: false,
+  });
   googleConfigured = true;
   return true;
 }

@@ -19,7 +19,17 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiresFullScreen": true,
-        "CFBundleDisplayName": "Appsurge"
+        "CFBundleDisplayName": "Appsurge",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLName": "dev.appsurge.mobile",
+            "CFBundleURLSchemes": ["appsurge"]
+          },
+          {
+            "CFBundleURLName": "google-oauth",
+            "CFBundleURLSchemes": ["com.googleusercontent.apps.745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k"]
+          }
+        ]
       },
       // Full-bleed icon on iOS too — same trimmed artwork, no white matte.
       "icon": "./appsurgeicon-fullbleed.png"

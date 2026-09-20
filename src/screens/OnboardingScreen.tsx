@@ -37,7 +37,7 @@ const SLIDES: Slide[] = [
     iconColor: colors.accent,
     iconBg: colors.accentSoft,
     title: 'Built for app developers',
-    body: 'You ship apps, not social calendars. Appsurge keeps your product\u2019s socials alive and growing while you build — no marketing team required.',
+    body: 'You ship apps, not social calendars. Appsurge keeps your product’s socials alive and growing while you build — no marketing team required.',
   },
   {
     icon: 'trending-up',

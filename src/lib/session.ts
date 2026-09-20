@@ -62,7 +62,12 @@ export async function signInWithGoogle() {
     throw new Error('Google sign-in needs the Android client ID from your Firebase console. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to .env, then rebuild the app.');
   }
   const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const { Platform } = await import('react-native');
+  // hasPlayServices exists only on Android — calling it on iOS rejects and
+  // would surface "Google sign-in was cancelled" even though nothing ran.
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  }
   const result = await GoogleSignin.signIn();
   if (!result.data?.idToken) throw new Error('Google sign-in was cancelled.');
   const credential = GoogleAuthProvider.credential(result.data.idToken);

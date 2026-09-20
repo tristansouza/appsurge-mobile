@@ -108,7 +108,7 @@ export function SignInScreen() {
             <Text style={styles.buttonText}>{busy ? 'Please wait...' : 'Sign in'}</Text>
             <Icon name="arrow-forward" size={18} color={colors.surface} />
           </Pressable>
-          <Text style={styles.hint}>Just sign in — if you don\u2019t have an account yet, we\u2019ll create it for you.</Text>
+          <Text style={styles.hint}>Just sign in — if you don’t have an account yet, we’ll create it for you.</Text>
         </View>
       </KeyboardAvoidingView>
     </View>
