@@ -1,4 +1,5 @@
 import { Platform as RNPlatform } from 'react-native';
+import * as Crypto from 'expo-crypto';
 
 // Platform OAuth configs for the mobile connect flow.
 //
@@ -24,6 +25,8 @@ export type PlatformOAuthConfig = {
   scope: string;
   supportsPkce: boolean;
   extraAuthParams?: Record<string, string>;
+  /** Host the authorize page lives on (used for the WebView decision). */
+  authorizeHost: string;
 };
 
 export const PLATFORM_CONFIGS: Record<MobilePlatform, PlatformOAuthConfig> = {
@@ -37,6 +40,7 @@ export const PLATFORM_CONFIGS: Record<MobilePlatform, PlatformOAuthConfig> = {
     // extra scope approval. Video scopes can be opted into later.
     scope: 'user.info.basic,user.info.profile',
     supportsPkce: true,
+    authorizeHost: 'www.tiktok.com',
   },
   instagram: {
     id: 'instagram',
@@ -48,6 +52,7 @@ export const PLATFORM_CONFIGS: Record<MobilePlatform, PlatformOAuthConfig> = {
     // Instagram Business Login's documented flow is not PKCE-based; sending
     // PKCE params to Meta surfaces a misleading "Invalid platform app" page.
     supportsPkce: false,
+    authorizeHost: 'www.instagram.com',
   },
   youtube: {
     id: 'youtube',
@@ -58,6 +63,7 @@ export const PLATFORM_CONFIGS: Record<MobilePlatform, PlatformOAuthConfig> = {
     scope: 'https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.upload',
     supportsPkce: true,
     extraAuthParams: { access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true' },
+    authorizeHost: 'accounts.google.com',
   },
   threads: {
     id: 'threads',
@@ -67,47 +73,95 @@ export const PLATFORM_CONFIGS: Record<MobilePlatform, PlatformOAuthConfig> = {
     redirectPath: '/auth/threads/callback',
     scope: 'threads_basic,threads_content_publish,threads_manage_insights',
     supportsPkce: false,
+    authorizeHost: 'threads.net',
   },
 };
 
-const LAUNCHPAD_ORIGIN = (process.env.EXPO_PUBLIC_LAUNCHPAD_ORIGIN ?? 'https://app-surge.dev').replace(/\/+$/, '');
+export const LAUNCHPAD_ORIGIN = (process.env.EXPO_PUBLIC_LAUNCHPAD_ORIGIN ?? 'https://app-surge.dev').replace(/\/+$/, '');
 
 export function launchpadRedirectUri(platform: MobilePlatform): string {
   return `${LAUNCHPAD_ORIGIN}${PLATFORM_CONFIGS[platform].redirectPath}`;
+}
+
+// Threads and Instagram have verified Android App Links, so opening their
+// authorize URLs directly from a mobile browser bounces into the platform's
+// app and the OAuth flow dies there. Starting the browser on our own domain
+// (which no app claims) and hopping to the platform via JS avoids that —
+// Chrome does not fire app-link interception on JS-issued navigations.
+const APP_LINK_BOUNCE_HOSTS = new Set([
+  'threads.net', 'www.threads.net',
+  'instagram.com', 'www.instagram.com',
+  // TikTok's authorize host claims verified App Links too — same hijack.
+  'tiktok.com', 'www.tiktok.com',
+]);
+
+/** Wrap a platform authorize URL in the launchpad hop page if its host is
+ *  known to bounce mobile browsers into the native app. */
+export function viaAppLinkHop(authorizeUrl: string): string {
+  try {
+    const host = new URL(authorizeUrl).hostname;
+    if (!APP_LINK_BOUNCE_HOSTS.has(host)) return authorizeUrl;
+    // Server-side 302 (Cloudflare Pages Function). Chrome does not resolve
+    // App Links on HTTP redirects, so this reliably stays in the browser —
+    // a JS-navigation hop page is NOT exempt and bounced into the app again.
+    const hop = new URL(`${LAUNCHPAD_ORIGIN}/auth/hop`);
+    hop.searchParams.set('to', authorizeUrl);
+    return hop.toString();
+  } catch {
+    return authorizeUrl;
+  }
 }
 
 export function redirectOriginIsCustom(): boolean {
   return LAUNCHPAD_ORIGIN !== 'https://app-surge.dev';
 }
 
-// ---- PKCE (RFC 7636) — react-native getters, Expo crypto polyfills ------
+// ---- PKCE (RFC 7636) -------------------------------------------------------
+// Hermes (React Native's JS engine) does NOT implement WebCrypto, so
+// `globalThis.crypto.getRandomValues` / `crypto.subtle.digest` throw here.
+// All randomness and hashing goes through expo-crypto's native module, and
+// base64url is done by hand so we never depend on Hermes's btoa support.
 
-function randomBytesUrlSafe(length: number): string {
-  const bytes = new Uint8Array(length);
-  globalThis.crypto.getRandomValues(bytes);
-  let s = '';
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  // btoa is available in Hermes / Expo runtimes.
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i];
+    const b2 = bytes[i + 1];
+    const b3 = bytes[i + 2];
+    out += B64URL[b1 >> 2];
+    out += B64URL[((b1 & 0x03) << 4) | ((b2 ?? 0) >> 4)];
+    if (b2 === undefined) break;
+    out += B64URL[((b2 & 0x0f) << 2) | ((b3 ?? 0) >> 6)];
+    if (b3 === undefined) break;
+    out += B64URL[b3 & 0x3f];
+  }
+  return out;
+}
+
+function base64ToBase64Url(value: string): string {
+  return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export async function generatePkce(): Promise<{ verifier: string; challenge: string }> {
-  const verifier = randomBytesUrlSafe(64);
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  let s = '';
-  for (const byte of new Uint8Array(digest)) s += String.fromCharCode(byte);
-  const challenge = btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return { verifier, challenge };
+  const verifier = bytesToBase64Url(Crypto.getRandomBytes(64));
+  const digest = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    verifier,
+    { encoding: Crypto.CryptoEncoding.BASE64 },
+  );
+  return { verifier, challenge: base64ToBase64Url(digest) };
 }
 
 export function generateState(): string {
-  return randomBytesUrlSafe(32);
+  return bytesToBase64Url(Crypto.getRandomBytes(32));
 }
 
 export function humanLabel(platform: string): string {
   const config = (PLATFORM_CONFIGS as Record<string, PlatformOAuthConfig | undefined>)[platform];
   if (config) return config.label;
-  return platform === 'x' ? 'X' : platform.charAt(0).toUpperCase() + platform.slice(1);
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
 }
 
 export const isAndroid = RNPlatform.OS === 'android';

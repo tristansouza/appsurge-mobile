@@ -37,7 +37,7 @@ function jsonArray(raw: string): any {
   }
 }
 
-const VALID_PLATFORMS: PlatformId[] = ['tiktok', 'instagram', 'youtube', 'threads', 'x'];
+const VALID_PLATFORMS: PlatformId[] = ['tiktok', 'instagram', 'youtube', 'threads'];
 
 function coercePlatforms(value: unknown): PlatformId[] {
   const list = Array.isArray(value) ? value : [];
@@ -56,17 +56,16 @@ function coerceStringArray(value: unknown, fallback: string[]): string[] {
 export async function recommendPlatformsAndHashtags(input: {
   appName: string;
   storeUrl: string;
-  appCategory: string;
-  targetAudience: string;
+  appleStoreUrl?: string;
 }): Promise<PlatformRecommendation> {
   const prompt = [
     'You are Appsurge, a social media strategist for mobile app developers.',
     'A developer is onboarding their app onto Appsurge. Recommend the best social platforms and hashtags for it.',
+    'The store listings are the source of truth: infer the app category, target audience, and what the app does from the store URLs (you know these stores). If you recognize the app, use what you know about it. If neither link is provided, work from the app name and your best knowledge of it.',
     '',
     `App name: ${input.appName}`,
-    `Store URL: ${input.storeUrl || 'not provided'}`,
-    `App category: ${input.appCategory}`,
-    `Target audience: ${input.targetAudience || 'general mobile app users'}`,
+    `Google Play Store URL: ${input.storeUrl || 'not provided'}`,
+    `Apple App Store URL: ${input.appleStoreUrl || 'not provided'}`,
     '',
     'Pick the 2 to 4 best platforms from this exact list: tiktok, instagram, youtube, threads, x.',
     'Choose hashtags that real app marketers use on those platforms (no #, no spaces, 8-12 of them, mix of broad and niche).',
@@ -90,8 +89,9 @@ export async function recommendPlatformsAndHashtags(input: {
 export async function generateWeeklyPlan(input: {
   appName: string;
   storeUrl: string;
-  appCategory: string;
-  targetAudience: string;
+  appleStoreUrl?: string;
+  appCategory?: string;
+  targetAudience?: string;
   platforms: PlatformId[];
   hashtags: string[];
 }): Promise<PlannedSlot[]> {
@@ -101,11 +101,11 @@ export async function generateWeeklyPlan(input: {
   const prompt = [
     'You are Appsurge, an AI social media content planner for mobile app developers.',
     'Create a 7-day content plan for the app below. One post per day.',
+    'The store listings are the source of truth: infer the app category, audience, and features from the store URLs (you know these stores). If you recognize the app, use what you know about it. If neither link is provided, work from the app name and your best knowledge of it.',
     '',
     `App name: ${input.appName}`,
-    `Store URL: ${input.storeUrl || 'not provided'}`,
-    `App category: ${input.appCategory}`,
-    `Target audience: ${input.targetAudience || 'general mobile app users'}`,
+    `Google Play Store URL: ${input.storeUrl || 'not provided'}`,
+    `Apple App Store URL: ${input.appleStoreUrl || 'not provided'}`,
     `Platforms to use: ${platformList}`,
     `Hashtags to weave in: ${hashtagList}`,
     '',

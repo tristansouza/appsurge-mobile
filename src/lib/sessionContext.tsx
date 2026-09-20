@@ -11,7 +11,7 @@ const DEMO_USER: User = {
   email: 'tristan@app-surge.dev',
   emailVerified: true,
 };
-import { firebaseErrorMessage, resetPassword, signIn, signOut, signUp, signInWithGoogle, isGoogleAvailable, subscribeToSession, resendVerificationEmail, reloadVerificationState } from './session';
+import { firebaseErrorMessage, resetPassword, signIn, signOut, signUp, signInWithGoogle, isGoogleAvailable, subscribeToSession, resendVerificationEmail, reloadVerificationState, updateDisplayName } from './session';
 
 type SessionContextValue = {
   user: User | null;
@@ -28,6 +28,7 @@ type SessionContextValue = {
   signOut: () => Promise<void>;
   resendVerification: () => Promise<void>;
   checkVerification: () => Promise<boolean>;
+  renameSelf: (name: string) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -83,6 +84,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     googleAvailable: isGoogleAvailable(),
     resetPassword: (email) => run(async () => { await resetPassword(email); }),
     signOut: () => run(async () => { await signOut(); }),
+    renameSelf: async (name) => {
+      await updateDisplayName(name);
+      if (user) setUser({ ...user, name: name.trim().slice(0, 60) });
+    },
     resendVerification: () => run(async () => {
       const result = await resendVerificationEmail();
       setNotice(result === 'already-verified' ? 'Your email is already verified — tap "I verified my email" below.' : 'Confirmation email sent. Check your inbox.');

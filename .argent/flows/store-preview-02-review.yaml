@@ -3,7 +3,7 @@ executionPrerequisite: >-
   and approves a post.
 
 steps:
-  - echo: Preview segment 2 — Queue: show the AI plan, then approve the first post.
+  - echo: "Preview segment 2 — Queue: show the AI plan, then approve the first post."
   - tap:
       text: Queue
   - await:

@@ -12,8 +12,12 @@ import { VerifyEmailScreen } from './src/screens/VerifyEmailScreen';
 import { AppSetupScreen } from './src/screens/AppSetupScreen';
 import { MainTabs } from './src/navigation/MainTabs';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { loadAppRecord } from './src/lib/cloudStore';
-import { maybeHandleInitialUrl, consumeOAuthDeepLink, isOAuthDeepLink } from './src/lib/connect';
+import { maybeHandleInitialUrl, consumeOAuthDeepLink, isCompletionUrl, isOAuthDeepLink } from './src/lib/connect';
+import { subscribeWebViewAuth, dismissWebViewAuth } from './src/lib/webViewAuthPresenter';
+import { WebViewAuthModal, type WebViewAuthRequest } from './src/ui/WebViewAuthModal';
+import { NotificationGate } from './src/ui/NotificationGate';
 import { Linking } from 'react-native';
 
 const ONBOARDING_KEY = '@appsurge/onboarding_seen_v1';
@@ -65,13 +69,19 @@ function useAppSetup(enabled: boolean): ['checking' | 'needed' | 'ready' | 'unkn
 // Routes OAuth deep links (appsurge://auth/...) into the connect flow, both
 // on cold start and while the app is open.
 function useDeepLinks() {
+  const [webAuth, setWebAuth] = React.useState<WebViewAuthRequest | null>(null);
   React.useEffect(() => {
     void maybeHandleInitialUrl();
     const subscription = Linking.addEventListener('url', (event) => {
       if (isOAuthDeepLink(event.url)) void consumeOAuthDeepLink(event.url);
     });
-    return () => subscription.remove();
+    const unsub = subscribeWebViewAuth(setWebAuth);
+    return () => {
+      subscription.remove();
+      unsub();
+    };
   }, []);
+  return webAuth;
 }
 
 function RootNavigator() {
@@ -79,7 +89,13 @@ function RootNavigator() {
   const [onboarding, completeOnboarding] = useOnboardingState();
   const authed = Boolean(user && user.emailVerified);
   const [setup, markSetupReady] = useAppSetup(authed);
-  useDeepLinks();
+  const webAuth = useDeepLinks();
+
+  // Mandatory notifications gate: shown once per signed-in session before
+  // the home screen, until permission is granted. Keyed by uid so signing
+  // out and back in presents it again.
+  const [notifyDoneFor, setNotifyDoneFor] = React.useState<string | null>(null);
+  const notifyDone = notifyDoneFor !== null && notifyDoneFor === (user?.id ?? '');
 
   if (loading || onboarding === 'checking' || (authed && setup === 'checking')) {
     return <View style={styles.loading}><ActivityIndicator color={colors.accent} /></View>;
@@ -87,6 +103,16 @@ function RootNavigator() {
 
   const showOnboarding = onboarding === 'unseen' && !user;
   const needsSetup = authed && setup === 'needed';
+  const showNotifyGate = authed && !needsSetup && !notifyDone;
+
+  if (showNotifyGate) {
+    return (
+      <View style={styles.loading}>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <NotificationGate onDone={() => setNotifyDoneFor(user?.id ?? '')} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer theme={navTheme}>
@@ -99,11 +125,23 @@ function RootNavigator() {
         {!showOnboarding && needsSetup && <Stack.Screen name="AppSetup">{() => <AppSetupScreen onComplete={markSetupReady} />}</Stack.Screen>}
         {!showOnboarding && authed && !needsSetup && <Stack.Screen name="Main" component={MainTabs} />}
       </Stack.Navigator>
+      <WebViewAuthModal
+        request={webAuth}
+        onDeepLink={(url) => {
+          // The WebView intercepts the https launchpad callback (e.g.
+          // https://app-surge.dev/auth/threads/callback?code=…) — accept BOTH
+          // it and the appsurge:// deep link here. Filtering on
+          // isOAuthDeepLink alone silently dropped the https callback, leaving
+          // the connect flow to time out.
+          if (isCompletionUrl(url)) void consumeOAuthDeepLink(url);
+        }}
+        onClose={() => dismissWebViewAuth()}
+      />
     </NavigationContainer>
   );
 }
 
 export default function App() {
-  return <AppErrorBoundary><QueryClientProvider client={queryClient}><SessionProvider><RootNavigator /></SessionProvider></QueryClientProvider></AppErrorBoundary>;
+  return <AppErrorBoundary><QueryClientProvider client={queryClient}><SessionProvider><SafeAreaProvider><RootNavigator /></SafeAreaProvider></SessionProvider></QueryClientProvider></AppErrorBoundary>;
 }
 const styles = StyleSheet.create({ loading: { flex: 1, backgroundColor: colors.canvas, alignItems: 'center', justifyContent: 'center' } });

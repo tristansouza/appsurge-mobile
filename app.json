@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./appsurgeicon.png",
+    "icon": "./appsurgeicon-fullbleed.png",
     "scheme": "appsurge",
     "newArchEnabled": false,
     "splash": {
@@ -17,19 +17,30 @@
       "bundleIdentifier": "dev.appsurge.mobile",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true,
+        "CFBundleDisplayName": "Appsurge"
+      },
+      // Full-bleed icon on iOS too — same trimmed artwork, no white matte.
+      "icon": "./appsurgeicon-fullbleed.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FAF6F0"
+        "foregroundImage": "./appsurgeicon-fullbleed.png",
+        "backgroundColor": "#2B2B2B"
       },
       "package": "dev.appsurge.mobile"
     },
     "plugins": [
       "expo-status-bar",
       "@react-native-google-signin/google-signin",
-      "expo-web-browser"
+      [
+        "expo-web-browser",
+        {
+          // iOS: our appsurge:// redirect completes the auth session.
+          "appName": "appsurge"
+        }
+      ]
     ],
     "extra": {
       "eas": {

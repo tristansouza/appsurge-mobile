@@ -37,8 +37,8 @@ const config = {
     fontFamily: '"DM Sans", -apple-system, system-ui, sans-serif',
     copyHeightRatio: 0.24,
     deviceWidthRatio: 0.84,
-    template: "editorial",
-    layout: "classic",
+    template: "uniform",
+    layout: "hero",
   },
 
   store: {
@@ -63,7 +63,6 @@ const config = {
       flow: "store-01-home",
       headline: { "en-US": "Your week, on autopilot" },
       subhead: { "en-US": "Appsurge plans, writes, and schedules every post for your app." },
-      secondScene: "queue",
     },
     {
       kind: "screenshot",
@@ -78,20 +77,6 @@ const config = {
       flow: "store-03-analytics",
       headline: { "en-US": "Watch it compound" },
       subhead: { "en-US": "Views, engagement, and follower growth across every platform." },
-    },
-    {
-      kind: "screenshot",
-      id: "settings",
-      flow: "store-04-settings",
-      headline: { "en-US": "Five platforms, one place" },
-      subhead: { "en-US": "TikTok, Instagram, YouTube, X, and Threads — connected." },
-    },
-    {
-      kind: "screenshot",
-      id: "compose",
-      flow: "store-05-compose",
-      headline: { "en-US": "Edit anything" },
-      subhead: { "en-US": "Captions, timing, media — you always have the final word." },
     },
     {
       kind: "preview",

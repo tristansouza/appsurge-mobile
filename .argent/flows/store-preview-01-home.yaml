@@ -1,5 +1,5 @@
 steps:
-  - echo: Preview segment 1 — open on Home, pause so the screen reads, then scroll to show content.
+  - echo: "Preview segment 1 — open on Home, pause so the screen reads, then scroll to show content."
   - launch: dev.appsurge.mobile
   - await:
       visible:

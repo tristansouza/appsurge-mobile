@@ -22,6 +22,8 @@ export type Post = {
   time: string;
   mediaColor: string;
   mediaLabel: string;
+  /** Generated slideshow images (base64 data URLs from Workers AI FLUX). */
+  slides?: string[];
   views?: string;
   engagement?: string;
 };

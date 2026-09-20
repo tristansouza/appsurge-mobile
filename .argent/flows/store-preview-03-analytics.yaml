@@ -3,7 +3,7 @@ executionPrerequisite: >-
   for the results shot.
 
 steps:
-  - echo: Preview segment 3 — Analytics: the momentum dashboard as the payoff shot.
+  - echo: "Preview segment 3 — Analytics: the momentum dashboard as the payoff shot."
   - tap:
       text: Analytics
   - await:

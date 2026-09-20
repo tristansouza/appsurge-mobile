@@ -37,9 +37,12 @@ import {
   generatePkce,
   generateState,
   launchpadRedirectUri,
+  viaAppLinkHop,
+  LAUNCHPAD_ORIGIN,
   type MobilePlatform,
 } from './platformAuth';
 import { buildWeeklyPlan, saveConnection, type ConnectionRecord } from './cloudStore';
+import { presentWebViewAuth, dismissWebViewAuth } from './webViewAuthPresenter';
 
 const PENDING_KEY = '@appsurge/oauth_pending_v1';
 
@@ -90,6 +93,31 @@ function publishOutcome(outcome: ConnectOutcome): void {
 export function isOAuthDeepLink(url: string | null): boolean {
   if (!url) return false;
   return url.startsWith('appsurge://auth/');
+}
+
+// The WebView intercepts the https launchpad callback before it loads, but
+// downstream parsing only understands the appsurge:// scheme. Convert an
+// https callback (https://app-surge.dev/auth/<p>/callback?code=…&state=…)
+// into its appsurge:// equivalent so one consumer handles both paths.
+export function toOAuthDeepLink(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'appsurge:') return url;
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+    if (parsed.hostname !== 'app-surge.dev' && parsed.hostname !== 'www.app-surge.dev') return null;
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length < 3 || segments[0] !== 'auth' || segments[segments.length - 1] !== 'callback') return null;
+    const deep = new URL(`appsurge://auth/${segments[1]}/callback`);
+    parsed.searchParams.forEach((value, key) => deep.searchParams.set(key, value));
+    return deep.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** True when a URL completes an OAuth flow in either form. */
+export function isCompletionUrl(url: string): boolean {
+  return isOAuthDeepLink(url) || toOAuthDeepLink(url) !== null;
 }
 
 export function parseOAuthDeepLink(url: string): { platform: string; code: string | null; state: string | null; error: string | null } | null {
@@ -149,7 +177,9 @@ export async function startPlatformConnect(platform: MobilePlatform): Promise<Co
     const clientIds = await getOAuthClientIds();
     const clientId = clientIds[platform];
     if (!clientId) {
-      return { kind: 'error', message: `${config.label} OAuth is not configured on the Appsurge gateway yet. Try again soon.` };
+      const outcome: ConnectOutcome = { kind: 'error', message: `${config.label} OAuth is not configured on the Appsurge gateway yet. Try again soon.` };
+      publishOutcome(outcome);
+      return outcome;
     }
 
     const redirectUri = launchpadRedirectUri(platform);
@@ -174,44 +204,100 @@ export async function startPlatformConnect(platform: MobilePlatform): Promise<Co
     rememberPending({ platform, state, codeVerifier: pkce?.verifier ?? null, startedAt: Date.now() });
 
     webSessionStarted = true;
-    const browserSession = WebBrowser.openAuthSessionAsync(
-      url.toString(),
-      redirectUri,
-    ).catch(() => null);
+
+    // Presentation per platform:
+    //  • Threads/Instagram — Meta's pages launch the installed app mid-chain
+    //    in ANY browser (reproduced on-device: BarcelonaActivity receives the
+    //    URL and drops it), so they authorize inside our own WebView, which
+    //    never does app-link dispatch.
+    //  • TikTok — verified working end-to-end in a Chrome Custom Tab today
+    //    (code reached the gateway exchange), while TikTok's embedded-WebView
+    //    login hits its post-login "hit a snag" error page. Keep it in a
+    //    Custom Tab, shielded from direct app-link resolution by the 302 hop.
+    //  • YouTube — Google has no app-link bounce; browser session as before.
+    const authorizeUrl = url.toString();
+    const useWebView = platform === 'threads' || platform === 'instagram';
 
     // Outcome gate: resolves as soon as ANY consumer publishes an outcome
-    // (global deep-link handler or the local consume below).
+    // (global deep-link handler or the WebView intercept below).
     const outcomeGate = waitForOutcome(platform, 150_000);
 
     let outcome: ConnectOutcome | null = null;
+    let plainBrowser = false;
 
-    // iOS resolves the session with the redirect URL directly.
-    const browserResult = await browserSession;
-    const successUrl =
-      browserResult && browserResult.type === 'success' && 'url' in browserResult
-        ? browserResult.url
-        : null;
-    if (successUrl) {
-      outcome = await consumeOAuthDeepLink(successUrl);
-    }
-
-    if (!outcome) {
-      // Browser session ended without handing us the URL (Android: the tab
-      // dismissed via deep link or the user backed out). The deep link has
-      // usually already been consumed by the global handler — but on some
-      // Android builds it lands a beat later. Short grace window, then
-      // report cancelled.
-      outcome = await Promise.race([
-        outcomeGate,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
-      ]);
+    try {
+      if (useWebView) {
+        presentWebViewAuth({
+          platform,
+          label: config.label,
+          url: authorizeUrl,
+          callbackOrigin: LAUNCHPAD_ORIGIN,
+          redirectPath: config.redirectPath,
+        });
+        // The WebView completes the flow either via the appsurge:// deep link
+        // (consumed by the global handler) or via the intercepted https
+        // callback (routed through consumeOAuthDeepLink by the modal's
+        // onDeepLink). Both publish to the outcome bus. Wait with the full
+        // timeout; dismissal without a result is handled when the gate times
+        // out or the user cancels.
+        outcome = await outcomeGate;
+        dismissWebViewAuth();
+      } else {
+        // Direct authorize URL — no hop. The 302 hop was a regression for
+        // TikTok: its post-login validation fails across the cross-site
+        // redirect chain ("hit a snag"). The direct Custom Tab flow is the
+        // one verified working end-to-end on this device this morning.
+        // (Hop remains server-side for any platform that still needs it;
+        // viaAppLinkHop is a no-op for YouTube.)
+        const target = authorizeUrl;
+        try {
+          const result = await WebBrowser.openAuthSessionAsync(target, redirectUri);
+          const successUrl = result && result.type === 'success' && 'url' in result ? result.url : null;
+          if (successUrl) {
+            outcome = await consumeOAuthDeepLink(successUrl);
+          }
+        } catch {
+          try {
+            await WebBrowser.openBrowserAsync(target);
+            plainBrowser = true;
+          } catch {
+            throw new Error('Could not open a browser window. Install Chrome or set a default browser, then try connecting again.');
+          }
+        }
+        if (!outcome && plainBrowser) {
+          // A real browser tab is open and the user may be signing in — wait
+          // with the full timeout. Cutting off early would report "cancelled"
+          // while the consent screen is still on screen.
+          outcome = await outcomeGate;
+        } else if (!outcome) {
+          // Browser session ended without handing us the URL (Android: the
+          // tab dismissed via deep link or the user backed out). Short grace
+          // window for late deep-link delivery, then report cancelled.
+          outcome = await Promise.race([
+            outcomeGate,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+          ]);
+        }
+      }
+    } catch (error) {
+      webSessionStarted = false;
+      dismissWebViewAuth();
+      const failed: ConnectOutcome = {
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Could not open the sign-in page.',
+      };
+      publishOutcome(failed);
+      return failed;
     }
 
     webSessionStarted = false;
+    dismissWebViewAuth();
     return outcome ?? { kind: 'cancelled' };
   } catch (error) {
     webSessionStarted = false;
-    return { kind: 'error', message: error instanceof Error ? error.message : 'Could not start the connection flow.' };
+    const outcome: ConnectOutcome = { kind: 'error', message: error instanceof Error ? error.message : 'Could not start the connection flow.' };
+    publishOutcome(outcome);
+    return outcome;
   }
 }
 
@@ -236,7 +322,10 @@ function waitForOutcome(platform: MobilePlatform, timeoutMs: number): Promise<Co
   });
 }
 
-export async function consumeOAuthDeepLink(url: string): Promise<ConnectOutcome | null> {
+export async function consumeOAuthDeepLink(rawUrl: string): Promise<ConnectOutcome | null> {
+  // Accept both the appsurge:// deep link and the https launchpad callback
+  // the WebView hands us — normalize to the deep-link form first.
+  const url = toOAuthDeepLink(rawUrl) ?? rawUrl;
   // The global handler and an awaiting flow can observe the same deep
   // link. Only the first consumer acts; the rest are silent no-ops.
   if (isDuplicateConsumption(url)) return null;
@@ -341,4 +430,12 @@ export async function maybeHandleInitialUrl() {
 
 export function hasActiveWebSession(): boolean {
   return webSessionStarted;
+}
+
+// Called when the user closes the WebView modal without completing sign-in.
+// Without this the awaiting connect flow would sit out its full 150-second
+// timeout looking frozen — publish 'cancelled' so it resolves immediately.
+export function notifyWebViewCancelled(): void {
+  if (!webSessionStarted) return;
+  publishOutcome({ kind: 'cancelled' });
 }

@@ -82,6 +82,18 @@ export async function signOut() {
   await firebaseSignOut(auth);
 }
 
+// Display-name edit ("what you want to be called"). Updates the Firebase
+// Auth profile in place; onAuthStateChanged picks up the change and every
+// screen reading the session (Settings header, Home greeting) re-renders
+// with the new name.
+export async function updateDisplayName(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Enter the name you want to be called by.');
+  const current = auth.currentUser;
+  if (!current) throw new Error('You need to be signed in first.');
+  await updateProfile(current, { displayName: trimmed.slice(0, 60) });
+}
+
 export async function getIdToken() {
   return auth.currentUser?.getIdToken() ?? null;
 }

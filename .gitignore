@@ -27,3 +27,7 @@ Thumbs.db
 # goldie store-asset outputs (config + flows are committed)
 goldie/out/
 goldie/*.apk
+
+# local secrets - never push
+.env.prod-keep
+.claude/

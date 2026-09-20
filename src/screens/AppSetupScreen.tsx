@@ -28,18 +28,17 @@ import { colors, radius, shadow, spacing } from '../theme';
 
 // Flow after sign-in: connect accounts FIRST, then app details, then the AI
 // picks, then the weekly plan. Connecting needs no app info, so it goes first.
-const WIZARD_STEPS = ['Connect', 'App', 'AI picks', 'Plan'] as const;
+const WIZARD_STEPS = ['Connect', 'App', 'Our picks', 'Plan'] as const;
 
-const SELECTABLE_PLATFORMS: PlatformId[] = ['tiktok', 'instagram', 'youtube', 'threads', 'x'];
+const SELECTABLE_PLATFORMS: PlatformId[] = ['tiktok', 'instagram', 'youtube', 'threads'];
 const CONNECTABLE_PLATFORMS = ['tiktok', 'instagram', 'youtube', 'threads'] as const;
 
 export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | null) => void }) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const [appName, setAppName] = useState('');
-  const [storeUrl, setStoreUrl] = useState('https://');
-  const [category, setCategory] = useState('');
-  const [audience, setAudience] = useState('');
+  const [storeUrl, setStoreUrl] = useState('');
+  const [appleStoreUrl, setAppleStoreUrl] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,9 +61,8 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
       if (!record) return;
       setExisting(record);
       setAppName(record.name ?? '');
-      setStoreUrl(record.storeUrl || 'https://');
-      setCategory(record.category || '');
-      setAudience(record.audience || '');
+      setStoreUrl(record.storeUrl || '');
+      setAppleStoreUrl(record.appleStoreUrl || '');
       setPlatforms(record.platforms ?? []);
       setHashtags(record.hashtags ?? []);
       setRationale(record.aiRationale ?? '');
@@ -100,8 +98,14 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
     setError('');
     setConnecting(platform);
     try {
-      await startPlatformConnect(platform);
-      // Outcome is delivered via the subscription above.
+      const outcome = await startPlatformConnect(platform);
+      // Deep-link outcomes arrive via the subscription above, but failures
+      // before the browser opens (gateway, PKCE, browser launch) only come
+      // back through the return value — surface those here so a tap can
+      // never silently do nothing.
+      if (outcome.kind === 'error') setError(outcome.message);
+    } catch {
+      setError('Could not start the connection flow. Check your internet and try again.');
     } finally {
       setConnecting(null);
     }
@@ -114,15 +118,14 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
       const result = await recommendPlatformsAndHashtags({
         appName: appName.trim(),
         storeUrl: storeUrl.trim(),
-        appCategory: category.trim() || 'mobile app',
-        targetAudience: audience.trim(),
+        appleStoreUrl: appleStoreUrl.trim() || undefined,
       });
       setPlatforms(result.platforms);
       setHashtags(result.hashtags);
       setRationale(result.rationale);
       setStep(2);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'AI request failed. Check your connection and try again.');
+      setError(cause instanceof Error ? cause.message.replace(/^AI request failed: /, '').slice(0, 160) : "We couldn't reach our content engine. Check your connection and try again.");
     } finally {
       setAiLoading(false);
     }
@@ -135,8 +138,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
       const saved = await saveAppRecord({
         name: appName.trim(),
         storeUrl: storeUrl.trim(),
-        category: category.trim() || 'mobile app',
-        audience: audience.trim(),
+        appleStoreUrl: appleStoreUrl.trim() || undefined,
         platforms,
         hashtags,
         aiRationale: rationale,
@@ -156,14 +158,16 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  const canRunAi = appName.trim().length > 1 && storeUrl.includes('.') && !aiLoading;
+  // Only the app name is required — both store links are optional. The AI
+  // works from the name alone when no links are given.
+  const canRunAi = appName.trim().length > 1 && !aiLoading;
   const anyConnected = Object.values(connected).some(Boolean);
   const connectedCount = Object.values(connected).filter(Boolean).length;
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 14 }]}>
       <View style={styles.header}>
-        <Image source={require('../../appsurgeicon.png')} style={styles.brandIcon} />
+        <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.brandIcon} />
         <Text style={styles.brandText}>appsurge</Text>
         <View style={{ flex: 1 }} />
         {step > 0 && step < 3 && (
@@ -215,15 +219,6 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
                   </View>
                 );
               })}
-              <View style={styles.connectRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.platformName}>X (Twitter)</Text>
-                  <Text style={styles.platformSub}>Finish on desktop — X blocks mobile OAuth</Text>
-                </View>
-                <View style={[styles.connectButton, { backgroundColor: colors.line }]}>
-                  <Text style={[styles.connectButtonText, { color: colors.muted }]}>Desktop</Text>
-                </View>
-              </View>
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <Pressable onPress={() => setStep(1)} style={styles.cta}>
                 <Text style={styles.ctaText}>{anyConnected ? 'Continue' : 'Skip for now'}</Text>
@@ -244,7 +239,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
             <View style={styles.stack}>
               <Text style={styles.h1}>Tell us about your app</Text>
               <Text style={styles.sub}>
-                The AI uses this to pick your platforms, hashtags, and build your weekly plan.
+                Name is all we need. Add your store links and we read the listings to learn what your app does and who it's for — skip them and we work from the name alone.
               </Text>
               <Text style={styles.label}>APP NAME</Text>
               <TextInput
@@ -254,7 +249,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
                 placeholderTextColor={colors.subtle}
                 style={styles.input}
               />
-              <Text style={styles.label}>STORE LINK</Text>
+              <Text style={styles.label}>GOOGLE PLAY STORE LINK (OPTIONAL)</Text>
               <TextInput
                 value={storeUrl}
                 onChangeText={setStoreUrl}
@@ -265,20 +260,15 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
                 autoCorrect={false}
                 style={styles.input}
               />
-              <Text style={styles.label}>CATEGORY</Text>
+              <Text style={styles.label}>APPLE APP STORE LINK (OPTIONAL)</Text>
               <TextInput
-                value={category}
-                onChangeText={setCategory}
-                placeholder="e.g. Productivity, Games, Health"
+                value={appleStoreUrl}
+                onChangeText={setAppleStoreUrl}
+                placeholder="https://apps.apple.com/app/id..."
                 placeholderTextColor={colors.subtle}
-                style={styles.input}
-              />
-              <Text style={styles.label}>WHO IS IT FOR? (OPTIONAL)</Text>
-              <TextInput
-                value={audience}
-                onChangeText={setAudience}
-                placeholder="e.g. Indie developers growing on TikTok"
-                placeholderTextColor={colors.subtle}
+                autoCapitalize="none"
+                keyboardType="url"
+                autoCorrect={false}
                 style={styles.input}
               />
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -288,7 +278,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
                 ) : (
                   <>
                     <Icon name="sparkles" size={17} color={colors.surface} />
-                    <Text style={styles.ctaText}>Continue — get AI recommendations</Text>
+                    <Text style={styles.ctaText}>Continue — get our recommendations</Text>
                   </>
                 )}
               </Pressable>
@@ -297,8 +287,8 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
 
           {step === 2 && (
             <View style={styles.stack}>
-              <Text style={styles.h1}>AI recommendations</Text>
-              <Text style={styles.sub}>Tap any platform to adjust the AI's picks for {appName.trim() || 'your app'}.</Text>
+              <Text style={styles.h1}>Our recommendations</Text>
+              <Text style={styles.sub}>Tap any platform to adjust our picks for {appName.trim() || 'your app'}.</Text>
               <View style={styles.pillWrap}>
                 {SELECTABLE_PLATFORMS.map((platform) => {
                   const active = platforms.includes(platform);
@@ -342,7 +332,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
             <View style={styles.stack}>
               <Text style={styles.h1}>Building your weekly plan</Text>
               <Text style={styles.sub}>
-                The AI is writing your first week of posts — hooks, captions, and hashtags for {appName.trim() || 'your app'}. This takes a few seconds.
+                We're writing your first week of posts — hooks, captions, and hashtags for {appName.trim() || 'your app'}. This takes a few seconds.
               </Text>
               {planning ? (
                 <View style={styles.generating}>

@@ -105,7 +105,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
     <View style={[styles.safe, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
       <View style={styles.header}>
         <View style={styles.brand}>
-          <Image source={require('../../appsurgeicon.png')} style={styles.brandIcon} />
+          <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.brandIcon} />
           <Text style={styles.brandText}>appsurge</Text>
         </View>
         <Pressable onPress={onDone} hitSlop={12}>

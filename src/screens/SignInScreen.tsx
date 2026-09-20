@@ -73,7 +73,7 @@ export function SignInScreen() {
     <View style={[styles.safe, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.lg }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
         <View style={styles.brand}>
-          <Image source={require('../../appsurgeicon.png')} style={styles.appIcon} />
+          <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.appIcon} />
           <Text style={styles.brandText}>appsurge</Text>
         </View>
         <View style={styles.hero}>

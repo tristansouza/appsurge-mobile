@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { PostCard } from '../components/PostCard';
 import { usePosts } from '../hooks/useAppData';
+import { captionToSlidePrompts, generateSlideshow } from '../lib/gateway';
+import { approveAllPlanSlots, buildWeeklyPlan, setSlotStatus, type PlanSlotRecord } from '../lib/cloudStore';
+import { loadConnections } from '../lib/cloudStore';
 import { Post, PostStatus } from '../types';
-import { colors, globalStyles, radius, spacing } from '../theme';
+import { colors, globalStyles, radius, shadow, spacing } from '../theme';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try { ImagePicker = require('expo-image-picker'); } catch {}
@@ -39,6 +42,8 @@ export function QueueScreen() {
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [editing, setEditing] = useState<Post | null>(null);
   const [creating, setCreating] = useState(false);
+  const [slidesBusy, setSlidesBusy] = useState(false);
+  const [slideError, setSlideError] = useState('');
   const weekDays = React.useMemo(currentWeekDays, []);
   const todayLabel = weekDays[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1].label;
   const filtered = useMemo(() => posts.filter((post) => filter === 'All' || post.status === filter), [filter, posts]);
@@ -52,10 +57,101 @@ export function QueueScreen() {
   const approve = (post: Post) => updatePost(post.id, { status: 'Scheduled' });
   const reject = (post: Post) => updatePost(post.id, { status: 'Failed' });
 
+  // ---- Plan regeneration + bulk approval review flow ----------------------
+  const [regenBusy, setRegenBusy] = useState(false);
+  const [reviewStep, setReviewStep] = useState<'closed' | 'terms' | 'walkthrough' | 'generating'>('closed');
+  const [acceptedTerms, setAcceptedTerms] = useState<Record<string, boolean>>({});
+  const [walkthroughIndex, setWalkthroughIndex] = useState(0);
+  const [reviewDrafts, setReviewDrafts] = useState<Post[]>([]);
+  const [regenError, setRegenError] = useState('');
+
+  const reviewPosts = useMemo(
+    () => posts.filter((post) => post.status === 'Needs review'),
+    [posts],
+  );
+
+  const regeneratePlan = async () => {
+    if (regenBusy) return;
+    setRegenBusy(true);
+    setRegenError('');
+    try {
+      await buildWeeklyPlan(); // AI writes a fresh 7-day plan into Firestore
+      await queryClient.invalidateQueries({ queryKey: ['posts'] });
+      await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+    } catch (cause) {
+      setRegenError(cause instanceof Error ? cause.message : "We couldn't build a new plan. Try again.");
+    } finally {
+      setRegenBusy(false);
+    }
+  };
+
+  const openReview = () => {
+    if (!reviewPosts.length) return;
+    setReviewDrafts(reviewPosts.map((post) => ({ ...post })));
+    setWalkthroughIndex(0);
+    setReviewStep('terms');
+  };
+
+  // Platforms with pending posts — each needs its posting terms accepted.
+  const pendingPlatforms = useMemo(() => {
+    const seen: string[] = [];
+    for (const post of reviewDrafts) {
+      if (!seen.includes(post.platform)) seen.push(post.platform);
+    }
+    return seen;
+  }, [reviewDrafts]);
+
+  const allTermsAccepted = pendingPlatforms.every((platform) => acceptedTerms[platform]);
+
+  const acceptTermsAndContinue = () => {
+    setReviewStep('walkthrough');
+  };
+
+  const finishWalkthrough = async () => {
+    setReviewStep('generating');
+    try {
+      // Persist each reviewed post: caption edits and any rejects.
+      for (const draft of reviewDrafts) {
+        const dayMatch = draft.id.match(/plan-(\d+)-/);
+        const day = dayMatch ? Number(dayMatch[1]) : null;
+        if (day !== null && !Number.isNaN(day)) {
+          await setSlotStatus(day, draft.status === 'Failed' ? 'rejected' : 'approved');
+        }
+      }
+      await approveAllPlanSlots();
+      await queryClient.invalidateQueries({ queryKey: ['posts'] });
+      await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+      setReviewStep('closed');
+    } catch (cause) {
+      setRegenError(cause instanceof Error ? cause.message : "We couldn't approve the plan. Try again.");
+      setReviewStep('closed');
+    }
+  };
+
   const replaceMedia = async () => {
     if (!ImagePicker) return Alert.alert('Media', 'Image picker not available.');
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!result.canceled && editing) setEditing({ ...editing, mediaLabel: 'New media selected', mediaColor: colors.sage });
+  };
+
+  // Slideshow generation via the gateway → Cloudflare Workers AI
+  // (FLUX.1-schnell) — the same pipeline the desktop app uses. The caption
+  // is split into slide prompts locally, images render inline once ready.
+  const generateSlides = async () => {
+    if (!editing || slidesBusy) return;
+    setSlidesBusy(true);
+    setSlideError('');
+    try {
+      const prompts = captionToSlidePrompts({ title: editing.title, caption: editing.caption });
+      const results = await generateSlideshow({ prompts, aspectRatio: '9:16' });
+      const dataUrls = results.filter((r) => r.ok && r.dataUrl).map((r) => r.dataUrl!);
+      if (!dataUrls.length) throw new Error(results[0]?.error ?? 'No slides were generated.');
+      setEditing({ ...editing, slides: dataUrls });
+    } catch (cause) {
+      setSlideError(cause instanceof Error ? cause.message : "We couldn't generate your slides. Try again.");
+    } finally {
+      setSlidesBusy(false);
+    }
   };
 
   const saveEdit = () => {
@@ -64,6 +160,7 @@ export function QueueScreen() {
     else updatePost(editing.id, editing);
     setEditing(null);
     setCreating(false);
+    setSlideError('');
   };
 
   const openComposer = () => {
@@ -123,10 +220,15 @@ export function QueueScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.aiTitle}>Created with your brand voice</Text>
-            <Text style={styles.aiBody}>Review each post and make it yours.</Text>
+            <Text style={styles.aiBody}>Review the week, then approve everything at once.</Text>
           </View>
-          <Icon name="chevron-forward" size={18} color={colors.subtle} />
+          <Pressable onPress={() => void regeneratePlan()} disabled={regenBusy} hitSlop={6}>
+            {regenBusy ? <ActivityIndicator size="small" color={colors.accent} /> : (
+              <View style={styles.regenBtn}><Icon name="refresh" size={15} color={colors.accent} /><Text style={styles.regenText}>Regenerate</Text></View>
+            )}
+          </Pressable>
         </View>
+        {regenError ? <Text style={styles.regenError}>{regenError}</Text> : null}
 
         {view === 'calendar' && (
           <View style={styles.calendar}>
@@ -152,16 +254,10 @@ export function QueueScreen() {
                   <Text style={styles.secondaryText}>Edit</Text>
                 </Pressable>
                 {post.status === 'Needs review' && (
-                  <>
-                    <Pressable onPress={() => reject(post)} style={styles.reject}>
-                      <Icon name="close" size={15} color={colors.accent} />
-                      <Text style={styles.rejectText}>Reject</Text>
-                    </Pressable>
-                    <Pressable onPress={() => approve(post)} style={styles.approve}>
-                      <Icon name="checkmark" size={16} color={colors.surface} />
-                      <Text style={styles.approveText}>Approve</Text>
-                    </Pressable>
-                  </>
+                  <Pressable onPress={() => reject(post)} style={styles.reject}>
+                    <Icon name="close" size={15} color={colors.accent} />
+                    <Text style={styles.rejectText}>Exclude</Text>
+                  </Pressable>
                 )}
               </View>
             </View>
@@ -174,6 +270,105 @@ export function QueueScreen() {
           </View>
         )}
       </ScrollView>
+
+      {reviewPosts.length ? (
+        <View style={[styles.approveBar, { paddingBottom: Math.max(insets.bottom, 12) + 10 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.approveBarTitle}>{reviewPosts.length} post{reviewPosts.length === 1 ? '' : 's'} ready</Text>
+            <Text style={styles.approveBarSub}>Review once, approve the whole week.</Text>
+          </View>
+          <Pressable onPress={openReview} style={styles.approveAllBtn}>
+            <Icon name="checkmark-done" size={17} color={colors.surface} />
+            <Text style={styles.approveAllText}>Approve all</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <Modal visible={reviewStep !== 'closed'} animationType="slide" transparent onRequestClose={() => setReviewStep('closed')}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modal, { maxHeight: '88%' }]}>
+            {reviewStep === 'terms' && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={globalStyles.h2}>Before we post</Text>
+                  <Pressable onPress={() => setReviewStep('closed')}><Icon name="close" size={22} color={colors.muted} /></Pressable>
+                </View>
+                <Text style={styles.reviewBody}>Accept the posting terms for each platform in this week's plan. You only do this once per platform.</Text>
+                {pendingPlatforms.map((platform) => (
+                  <Pressable key={platform} onPress={() => setAcceptedTerms((current) => ({ ...current, [platform]: !current[platform] }))} style={styles.termsRow}>
+                    <Icon name={acceptedTerms[platform] ? 'checkbox' : 'checkbox-outline'} size={22} color={acceptedTerms[platform] ? colors.accent : colors.muted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.termsTitle}>I accept {platform}'s posting terms</Text>
+                      <Text style={styles.termsSub}>Appsurge posts to {platform} on my behalf according to their platform rules and my connected account's permissions.</Text>
+                    </View>
+                  </Pressable>
+                ))}
+                <Text style={styles.reviewFoot}>You can revoke access anytime from Settings → connected accounts.</Text>
+                <Pressable onPress={acceptTermsAndContinue} disabled={!allTermsAccepted} style={[styles.saveButton, !allTermsAccepted && { opacity: 0.45 }]}>
+                  <Text style={styles.saveText}>Continue to review</Text>
+                </Pressable>
+              </ScrollView>
+            )}
+
+            {reviewStep === 'walkthrough' && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={globalStyles.h2}>Review {walkthroughIndex + 1} of {reviewDrafts.length}</Text>
+                  <Pressable onPress={() => setReviewStep('closed')}><Icon name="close" size={22} color={colors.muted} /></Pressable>
+                </View>
+                {reviewDrafts[walkthroughIndex] ? (
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <Text style={styles.walkPlatform}>{reviewDrafts[walkthroughIndex].platform} · {reviewDrafts[walkthroughIndex].date}</Text>
+                    <Text style={styles.walkHook}>{reviewDrafts[walkthroughIndex].title}</Text>
+                    <Text style={styles.label}>DESCRIPTION</Text>
+                    <TextInput
+                      multiline
+                      value={reviewDrafts[walkthroughIndex].caption}
+                      onChangeText={(caption) => setReviewDrafts((current) => current.map((item, index) => (index === walkthroughIndex ? { ...item, caption } : item)))}
+                      style={styles.captionInput}
+                    />
+                    <View style={styles.walkNav}>
+                      {walkthroughIndex > 0 ? (
+                        <Pressable onPress={() => setWalkthroughIndex((i) => i - 1)} style={styles.secondary}>
+                          <Icon name="chevron-back" size={16} color={colors.ink} />
+                          <Text style={styles.secondaryText}>Back</Text>
+                        </Pressable>
+                      ) : <View style={{ flex: 1 }} />}
+                      <Pressable
+                        onPress={() => setReviewDrafts((current) => current.map((item, index) => (index === walkthroughIndex ? { ...item, status: 'Failed' as PostStatus } : item)))}
+                        style={[styles.secondary, reviewDrafts[walkthroughIndex].status === 'Failed' && { backgroundColor: colors.accentSoft }]}
+                      >
+                        <Icon name="close" size={15} color={colors.accent} />
+                        <Text style={styles.rejectText}>Exclude</Text>
+                      </Pressable>
+                      {walkthroughIndex < reviewDrafts.length - 1 ? (
+                        <Pressable onPress={() => setWalkthroughIndex((i) => i + 1)} style={styles.approve}>
+                          <Text style={styles.approveText}>Next</Text>
+                          <Icon name="chevron-forward" size={16} color={colors.surface} />
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => void finishWalkthrough()} style={styles.approve}>
+                          <Icon name="checkmark-done" size={16} color={colors.surface} />
+                          <Text style={styles.approveText}>Approve week</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                    <Text style={styles.reviewFoot}>Excluded posts are dropped from the plan; everything else goes out on schedule.</Text>
+                  </ScrollView>
+                ) : null}
+              </>
+            )}
+
+            {reviewStep === 'generating' && (
+              <View style={styles.generatingWrap}>
+                <ActivityIndicator size="large" color={colors.accent} />
+                <Text style={styles.generatingTitle}>Scheduling your week…</Text>
+                <Text style={styles.generatingBody}>We're approving your posts and locking in the schedule. This takes a moment.</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={Boolean(editing)} animationType="slide" transparent onRequestClose={() => setEditing(null)}>
         <View style={styles.modalBackdrop}>
@@ -204,6 +399,16 @@ export function QueueScreen() {
                   <Icon name="image-outline" size={18} color={colors.accent} />
                   <Text style={styles.mediaButtonText}>Swap media</Text>
                 </Pressable>
+                <Pressable onPress={() => void generateSlides()} style={[styles.mediaButton, slidesBusy && { opacity: 0.6 }]} disabled={slidesBusy}>
+                  {slidesBusy ? (
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  ) : (
+                    <Icon name="sparkles-outline" size={18} color={colors.accent} />
+                  )}
+                  <Text style={styles.mediaButtonText}>{slidesBusy ? 'Generating slides…' : 'Generate slides'}</Text>
+                </Pressable>
+                {slidesBusy ? <Text style={styles.slidesNote}>We're generating your slideshow with Cloudflare Workers AI — this takes up to a minute.</Text> : null}
+                {slideError ? <Text style={styles.slidesError}>{slideError}</Text> : null}
                 <Pressable onPress={saveEdit} style={styles.saveButton}>
                   <Text style={styles.saveText}>Save changes</Text>
                 </Pressable>
@@ -261,6 +466,27 @@ const styles = StyleSheet.create({
   smallInput: { height: 48, backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 12, color: colors.ink, fontSize: 13, marginBottom: spacing.lg },
   mediaButton: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, height: 48, borderRadius: 12, backgroundColor: colors.accentSoft, marginBottom: 12 },
   mediaButtonText: { color: colors.accent, fontWeight: '800', fontSize: 13 },
+  slidesNote: { color: colors.muted, fontSize: 11.5, lineHeight: 16, textAlign: 'center', marginBottom: 12 },
+  slidesError: { color: colors.danger, fontSize: 12, fontWeight: '600', marginBottom: 12 },
   saveButton: { height: 52, borderRadius: 14, backgroundColor: colors.accent, justifyContent: 'center', alignItems: 'center' },
   saveText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
+  regenBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surface, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 8 },
+  regenText: { color: colors.accent, fontSize: 12, fontWeight: '800' },
+  regenError: { color: colors.danger, fontSize: 12, fontWeight: '600', marginBottom: spacing.lg, marginTop: -8 },
+  approveBar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: spacing.lg, paddingTop: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, ...shadow },
+  approveBarTitle: { color: colors.ink, fontSize: 13.5, fontWeight: '800' },
+  approveBarSub: { color: colors.muted, fontSize: 11.5, marginTop: 2 },
+  approveAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.green, borderRadius: radius.md, paddingHorizontal: 18, height: 46 },
+  approveAllText: { color: colors.surface, fontSize: 13.5, fontWeight: '800' },
+  reviewBody: { color: colors.muted, fontSize: 13, lineHeight: 19, marginBottom: spacing.lg },
+  termsRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: radius.md, padding: 14, marginBottom: 10 },
+  termsTitle: { color: colors.ink, fontSize: 13.5, fontWeight: '800' },
+  termsSub: { color: colors.muted, fontSize: 11.5, lineHeight: 16, marginTop: 3 },
+  reviewFoot: { color: colors.subtle, fontSize: 11, lineHeight: 15, marginVertical: spacing.md },
+  walkPlatform: { color: colors.muted, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 6 },
+  walkHook: { color: colors.ink, fontSize: 17, fontWeight: '800', lineHeight: 23, marginBottom: spacing.md },
+  walkNav: { flexDirection: 'row', gap: 8, marginTop: spacing.md },
+  generatingWrap: { alignItems: 'center', paddingVertical: 50, paddingHorizontal: spacing.lg },
+  generatingTitle: { color: colors.ink, fontSize: 16, fontWeight: '800', marginTop: spacing.lg },
+  generatingBody: { color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6 },
 });
