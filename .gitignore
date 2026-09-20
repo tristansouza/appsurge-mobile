@@ -31,3 +31,4 @@ goldie/*.apk
 # local secrets - never push
 .env.prod-keep
 .claude/
+key.properties

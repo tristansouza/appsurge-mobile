@@ -39,7 +39,8 @@
         "foregroundImage": "./appsurgeicon-fullbleed.png",
         "backgroundColor": "#2B2B2B"
       },
-      "package": "dev.appsurge.mobile"
+      "package": "dev.appsurge.mobile",
+      "versionCode": 1
     },
     "plugins": [
       "expo-status-bar",
