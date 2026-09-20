@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Firebase's React Native conditional export is selected by Metro at runtime;
@@ -21,11 +22,12 @@ const firebaseConfig = {
 // Public web OAuth client used for Google sign-in (safe to embed).
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-// iOS-native OAuth client. Google auto-registers the
-// com.googleusercontent.apps.<id>:// redirect for every OAuth client, so the
-// web client's ID works as the iOS client ID — as long as its reversed form
-// is registered as a URL scheme in the iOS build (handled via app.json).
-const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? googleWebClientId;
+// iOS-native OAuth client. The native Google SDK on iOS REQUIRES a dedicated
+// iOS-type OAuth client (Google Cloud console → Credentials → OAuth client
+// ID → iOS, bundle dev.appsurge.mobile). Passing the web client here crashes
+// the app at signIn() time, so there is deliberately NO fallback: without a
+// real iOS client the sign-in button is hidden on iOS instead.
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
 const missing = Object.entries(firebaseConfig).filter(([, value]) => !value).map(([key]) => key);
 if (missing.length) {
@@ -42,6 +44,13 @@ try {
 }
 
 export const isGoogleSignInConfigured = Boolean(googleWebClientId);
+
+// Whether the Google button should render at all: Android rides the Firebase
+// google-services.json client (works with just the web client ID); iOS needs
+// the dedicated iOS-type client or the native SDK hard-crashes.
+export function isGoogleAvailableOnThisPlatform(): boolean {
+  return Platform.OS === 'ios' ? Boolean(googleIosClientId) : isGoogleSignInConfigured;
+}
 export const googleIosUrlScheme = googleIosClientId
   ? `com.googleusercontent.apps.${googleIosClientId.replace('.apps.googleusercontent.com', '')}`
   : null;
@@ -53,8 +62,7 @@ export async function configureGoogleSignIn() {
   const { Platform } = await import('react-native');
   GoogleSignin.configure({
     webClientId: googleWebClientId,
-    // iOS requires its own client ID; without it the SDK throws
-    // "failed to determine clientID" at signIn() time.
+    // Only ever set from a real iOS-type OAuth client — see note above.
     ...(Platform.OS === 'ios' && googleIosClientId ? { iosClientId: googleIosClientId } : {}),
     offlineAccess: false,
   });

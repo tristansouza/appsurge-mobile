@@ -1,5 +1,5 @@
 import { createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
-import { auth, configureGoogleSignIn, isGoogleSignInConfigured } from './firebase';
+import { auth, configureGoogleSignIn, isGoogleSignInConfigured, isGoogleAvailableOnThisPlatform } from './firebase';
 import { User } from '../types';
 
 export function mapFirebaseUser(user: FirebaseUser): User {
@@ -55,11 +55,11 @@ export async function reloadVerificationState() {
 
 export async function signInWithGoogle() {
   if (!isGoogleSignInConfigured) {
-    throw new Error('Google sign-in needs the Android client ID from your Firebase console. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to .env, then rebuild the app.');
+    throw new Error('Google sign-in is not configured. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to .env, then rebuild the app.');
   }
   const configured = await configureGoogleSignIn();
   if (!configured) {
-    throw new Error('Google sign-in needs the Android client ID from your Firebase console. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to .env, then rebuild the app.');
+    throw new Error('Google sign-in is not configured. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to .env, then rebuild the app.');
   }
   const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
   const { Platform } = await import('react-native');
@@ -76,7 +76,7 @@ export async function signInWithGoogle() {
 }
 
 export function isGoogleAvailable() {
-  return isGoogleSignInConfigured;
+  return isGoogleAvailableOnThisPlatform();
 }
 
 export async function resetPassword(email: string) {
