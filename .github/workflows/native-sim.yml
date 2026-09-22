@@ -346,6 +346,36 @@ jobs:
             echo "URL the CLI printed. Anyone holding it can drive the simulator."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Write .env from secrets
+        if: inputs.mode == 'build'
+        env:
+          V_API_KEY: ${{ secrets.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          V_AUTH_DOMAIN: ${{ secrets.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          V_PROJECT_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          V_STORAGE_BUCKET: ${{ secrets.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          V_MESSAGING_SENDER_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          V_APP_ID: ${{ secrets.EXPO_PUBLIC_FIREBASE_APP_ID }}
+          V_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          V_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          V_GATEWAY_URL: ${{ secrets.EXPO_PUBLIC_GATEWAY_URL }}
+          V_GATEWAY_API_KEY: ${{ secrets.EXPO_PUBLIC_GATEWAY_API_KEY }}
+          V_LAUNCHPAD_ORIGIN: ${{ secrets.EXPO_PUBLIC_LAUNCHPAD_ORIGIN }}
+        run: |
+          cat > .env <<EOF
+          EXPO_PUBLIC_FIREBASE_API_KEY=$V_API_KEY
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=$V_AUTH_DOMAIN
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID=$V_PROJECT_ID
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=$V_STORAGE_BUCKET
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$V_MESSAGING_SENDER_ID
+          EXPO_PUBLIC_FIREBASE_APP_ID=$V_APP_ID
+          EXPO_PUBLIC_API_URL=$V_API_URL
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=$V_GOOGLE_WEB_CLIENT_ID
+          EXPO_PUBLIC_GATEWAY_URL=$V_GATEWAY_URL
+          EXPO_PUBLIC_GATEWAY_API_KEY=$V_GATEWAY_API_KEY
+          EXPO_PUBLIC_LAUNCHPAD_ORIGIN=$V_LAUNCHPAD_ORIGIN
+          EOF
+          grep -c '=' .env | xargs echo "env vars written:"
+
       - name: Build app
         timeout-minutes: 60
         if: inputs.mode == 'build' && steps.appcache.outputs.cache-hit != 'true'
