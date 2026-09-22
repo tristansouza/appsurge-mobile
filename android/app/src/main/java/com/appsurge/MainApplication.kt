@@ -1,4 +1,4 @@
-package dev.appsurge.mobile
+package com.appsurge
 
 import android.app.Application
 import android.content.res.Configuration

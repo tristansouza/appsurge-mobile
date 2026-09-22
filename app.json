@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.appsurge.mobile",
+      "bundleIdentifier": "com.appsurge",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -22,7 +22,7 @@
         "CFBundleDisplayName": "Appsurge",
         "CFBundleURLTypes": [
           {
-            "CFBundleURLName": "dev.appsurge.mobile",
+            "CFBundleURLName": "com.appsurge",
             "CFBundleURLSchemes": ["appsurge"]
           },
           {
@@ -39,7 +39,7 @@
         "foregroundImage": "./appsurgeicon-fullbleed.png",
         "backgroundColor": "#2B2B2B"
       },
-      "package": "dev.appsurge.mobile",
+      "package": "com.appsurge",
       "versionCode": 1
     },
     "plugins": [

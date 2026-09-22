@@ -1,4 +1,4 @@
-package dev.appsurge.mobile
+package com.appsurge
 
 import android.os.Build
 import android.os.Bundle

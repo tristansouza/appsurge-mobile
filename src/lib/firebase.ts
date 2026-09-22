@@ -24,7 +24,7 @@ const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 // iOS-native OAuth client. The native Google SDK on iOS REQUIRES a dedicated
 // iOS-type OAuth client (Google Cloud console → Credentials → OAuth client
-// ID → iOS, bundle dev.appsurge.mobile). Passing the web client here crashes
+// ID → iOS, bundle com.appsurge). Passing the web client here crashes
 // the app at signIn() time, so there is deliberately NO fallback: without a
 // real iOS client the sign-in button is hidden on iOS instead.
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
