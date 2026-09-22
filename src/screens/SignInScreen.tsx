@@ -4,6 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { useSession } from '../lib/sessionContext';
+import { trackSignInStarted, trackPasswordResetRequested } from '../lib/analytics';
 import { colors, globalStyles, radius, shadow, spacing, warmShadowColor } from '../theme';
 
 function GoogleG() {
@@ -22,6 +23,7 @@ export function SignInScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -35,6 +37,7 @@ export function SignInScreen() {
     setBusy(true);
     try {
       // Signs in, or creates the account automatically if it doesn't exist.
+      trackSignInStarted('email');
       await signIn(email, password);
     } catch {
       // The session context exposes the friendly error.
@@ -48,6 +51,7 @@ export function SignInScreen() {
     setNotice(null);
     setBusy(true);
     try {
+      trackSignInStarted('google');
       await signInWithGoogle();
     } catch {
       // The session context exposes the friendly error.
@@ -63,6 +67,7 @@ export function SignInScreen() {
     }
     try {
       await resetPassword(email);
+      trackPasswordResetRequested();
       setNotice('Password reset email sent.');
     } catch {
       // The session context exposes the friendly error.
@@ -74,7 +79,7 @@ export function SignInScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
         <View style={styles.brand}>
           <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.appIcon} />
-          <Text style={styles.brandText}>appsurge</Text>
+          <Text style={styles.brandText}>Appsurge</Text>
         </View>
         <View style={styles.hero}>
           <Text style={globalStyles.h1}>Welcome back.</Text>
@@ -97,7 +102,12 @@ export function SignInScreen() {
           <Text style={styles.label}>EMAIL</Text>
           <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="you@company.com" placeholderTextColor={colors.subtle} style={styles.input} />
           <Text style={[styles.label, { marginTop: spacing.lg }]}>PASSWORD</Text>
-          <TextInput secureTextEntry value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={colors.subtle} style={styles.input} />
+          <View style={styles.passwordWrap}>
+            <TextInput secureTextEntry={!showPassword} value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={colors.subtle} style={[styles.input, styles.passwordInput]} />
+            <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} style={styles.eyeBtn} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+              <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.muted} />
+            </Pressable>
+          </View>
           {email.trim() ? (
             <Pressable onPress={forgot} style={styles.forgot}>
               <Text style={styles.forgotText}>Forgot password?</Text>
@@ -108,7 +118,7 @@ export function SignInScreen() {
             <Text style={styles.buttonText}>{busy ? 'Please wait...' : 'Sign in'}</Text>
             <Icon name="arrow-forward" size={18} color={colors.surface} />
           </Pressable>
-          <Text style={styles.hint}>Just sign in — if you don’t have an account yet, we’ll create it for you.</Text>
+          <Text style={styles.hint}>Tip: use your work email — your whole team can share the same plan.</Text>
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -131,6 +141,9 @@ const styles = StyleSheet.create({
   dividerText: { color: colors.subtle, fontSize: 12, fontWeight: '700' },
   label: { color: colors.muted, fontSize: 10, letterSpacing: 1.2, fontWeight: '800', marginBottom: 9 },
   input: { height: 54, paddingHorizontal: 16, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.ink, fontSize: 15, shadowColor: warmShadowColor, shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  passwordWrap: { position: 'relative', justifyContent: 'center' },
+  passwordInput: { paddingRight: 52 },
+  eyeBtn: { position: 'absolute', right: 14, height: 54, justifyContent: 'center', alignItems: 'center' },
   forgot: { alignSelf: 'flex-end', marginTop: 13 },
   forgotText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   message: { color: colors.accent, fontSize: 13, lineHeight: 18, marginTop: 14 },

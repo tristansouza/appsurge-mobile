@@ -1,9 +1,19 @@
-import { createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, getAdditionalUserInfo, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut, updateProfile, type User as FirebaseUser } from 'firebase/auth';
 import { auth, configureGoogleSignIn, isGoogleSignInConfigured, isGoogleAvailableOnThisPlatform } from './firebase';
 import { User } from '../types';
+import { trackSignInCompleted, trackAccountCreated, trackSignOut } from './analytics';
+
+// Test accounts that are trusted without email verification (Firebase's
+// email confirmation template is skipped for them too).
+const VERIFICATION_EXEMPT_EMAILS = new Set(['testuser@app-surge.dev']);
+
+function isVerificationExempt(email: string | undefined | null): boolean {
+  return Boolean(email && VERIFICATION_EXEMPT_EMAILS.has(email.trim().toLowerCase()));
+}
 
 export function mapFirebaseUser(user: FirebaseUser): User {
-  return { id: user.uid, name: user.displayName ?? user.email?.split('@')[0] ?? 'Appsurge user', email: user.email ?? '', avatar: user.photoURL ?? undefined, emailVerified: user.emailVerified };
+  const verified = user.emailVerified || isVerificationExempt(user.email);
+  return { id: user.uid, name: user.displayName ?? user.email?.split('@')[0] ?? 'Appsurge user', email: user.email ?? '', avatar: user.photoURL ?? undefined, emailVerified: verified };
 }
 
 export function subscribeToSession(onChange: (user: User | null) => void) {
@@ -13,6 +23,7 @@ export function subscribeToSession(onChange: (user: User | null) => void) {
 export async function signIn(email: string, password: string) {
   try {
     const result = await signInWithEmailAndPassword(auth, email.trim(), password);
+    trackSignInCompleted('email');
     return mapFirebaseUser(result.user);
   } catch (error) {
     // No account yet for this email — create one automatically so a new
@@ -21,7 +32,8 @@ export async function signIn(email: string, password: string) {
     if (typeof error === 'object' && error && 'code' in error && (error as { code?: string }).code === 'auth/invalid-credential') {
       try {
         const created = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        await sendEmailVerification(created.user);
+        if (!isVerificationExempt(email)) await sendEmailVerification(created.user);
+        trackAccountCreated('email', true);
         return mapFirebaseUser(created.user);
       } catch {
         throw error; // surface the original sign-in error
@@ -34,7 +46,7 @@ export async function signIn(email: string, password: string) {
 export async function signUp(name: string, email: string, password: string) {
   const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
   if (name.trim()) await updateProfile(result.user, { displayName: name.trim() });
-  await sendEmailVerification(result.user); // Firebase's email confirmation template
+  if (!isVerificationExempt(email)) await sendEmailVerification(result.user); // Firebase's email confirmation template
   return mapFirebaseUser(result.user);
 }
 
@@ -72,6 +84,8 @@ export async function signInWithGoogle() {
   if (!result.data?.idToken) throw new Error('Google sign-in was cancelled.');
   const credential = GoogleAuthProvider.credential(result.data.idToken);
   const userCred = await signInWithCredential(auth, credential);
+  if (getAdditionalUserInfo(userCred)?.isNewUser) trackAccountCreated('google', false);
+  else trackSignInCompleted('google');
   return mapFirebaseUser(userCred.user);
 }
 
@@ -84,6 +98,7 @@ export async function resetPassword(email: string) {
 }
 
 export async function signOut() {
+  trackSignOut();
   await firebaseSignOut(auth);
 }
 

@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { colors, radius, shadow, spacing } from '../theme';
+import { trackOnboardingCompleted } from '../lib/analytics';
 
 type IconName = React.ComponentProps<typeof Icon>['name'];
 
@@ -95,6 +96,7 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
 
   const go = () => {
     if (isLast) {
+      trackOnboardingCompleted(SLIDES.length);
       onDone();
       return;
     }
@@ -106,11 +108,8 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
       <View style={styles.header}>
         <View style={styles.brand}>
           <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.brandIcon} />
-          <Text style={styles.brandText}>appsurge</Text>
+          <Text style={styles.brandText}>Appsurge</Text>
         </View>
-        <Pressable onPress={onDone} hitSlop={12}>
-          <Text style={styles.skip}>Skip</Text>
-        </Pressable>
       </View>
       <ScrollView
         ref={scrollRef}

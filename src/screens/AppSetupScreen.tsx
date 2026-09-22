@@ -22,6 +22,7 @@ import {
   type AppRecord,
 } from '../lib/cloudStore';
 import { startPlatformConnect, subscribeToConnectOutcomes, type ConnectOutcome } from '../lib/connect';
+import { trackSetupStarted, trackSetupRecommendations, trackSetupCompleted, trackPlanGenerated, trackPlanGenerationFailed } from '../lib/analytics';
 import { PLATFORM_CONFIGS, humanLabel } from '../lib/platformAuth';
 import { PlatformId } from '../types';
 import { colors, radius, shadow, spacing } from '../theme';
@@ -58,7 +59,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
     loadAppRecord().then((record) => {
       if (!active) return;
       setCheckedExisting(true);
-      if (!record) return;
+      if (!record) { trackSetupStarted(); return; }
       setExisting(record);
       setAppName(record.name ?? '');
       setStoreUrl(record.storeUrl || '');
@@ -114,6 +115,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
   const runAi = async () => {
     setAiLoading(true);
     setError('');
+    const startedAt = Date.now();
     try {
       const result = await recommendPlatformsAndHashtags({
         appName: appName.trim(),
@@ -123,8 +125,10 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
       setPlatforms(result.platforms);
       setHashtags(result.hashtags);
       setRationale(result.rationale);
+      trackSetupRecommendations(true, { platform_count: result.platforms.length, duration_ms: Date.now() - startedAt });
       setStep(2);
     } catch (cause) {
+      trackSetupRecommendations(false, { error_message: (cause instanceof Error ? cause.message : 'unknown').slice(0, 160) });
       setError(cause instanceof Error ? cause.message.replace(/^AI request failed: /, '').slice(0, 160) : "We couldn't reach our content engine. Check your connection and try again.");
     } finally {
       setAiLoading(false);
@@ -134,6 +138,7 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
   const finishSetup = async () => {
     setPlanning(true);
     setError('');
+    const startedAt = Date.now();
     try {
       const saved = await saveAppRecord({
         name: appName.trim(),
@@ -144,8 +149,11 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
         aiRationale: rationale,
       });
       await buildWeeklyPlan();
+      trackPlanGenerated(Date.now() - startedAt);
+      trackSetupCompleted(platforms.length);
       onComplete(saved);
     } catch (cause) {
+      trackPlanGenerationFailed(cause instanceof Error ? cause.message : 'unknown');
       setError(cause instanceof Error ? cause.message : 'Could not finish setup. Try again.');
     } finally {
       setPlanning(false);
@@ -160,15 +168,25 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
 
   // Only the app name is required — both store links are optional. The AI
   // works from the name alone when no links are given.
-  const canRunAi = appName.trim().length > 1 && !aiLoading;
+  const canRunAi = appName.trim().length > 1 && Boolean(storeUrl.trim() || appleStoreUrl.trim()) && !aiLoading;
+  // One required store link first; once it's filled we know which store it is
+  // and the opposite store's field appears (optional).
+  const storeFields: { kind: 'play' | 'apple'; value: string }[] = [
+    { kind: 'play', value: storeUrl },
+    { kind: 'apple', value: appleStoreUrl },
+  ];
+  const filled = storeFields.filter((f) => f.value.trim().length > 0);
+  const firstStoreField = filled[0] ?? storeFields[0];
+  const otherStoreField = filled.length === 1
+    ? storeFields.find((f) => f.kind !== filled[0].kind)
+    : null;
   const anyConnected = Object.values(connected).some(Boolean);
   const connectedCount = Object.values(connected).filter(Boolean).length;
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 14 }]}>
       <View style={styles.header}>
-        <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.brandIcon} />
-        <Text style={styles.brandText}>appsurge</Text>
+        <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.brandIcon} />          <Text style={styles.brandText}>Appsurge</Text>
         <View style={{ flex: 1 }} />
         {step > 0 && step < 3 && (
           <Pressable onPress={() => setStep((current) => Math.max(0, current - 1))} hitSlop={10}>
@@ -249,28 +267,39 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
                 placeholderTextColor={colors.subtle}
                 style={styles.input}
               />
-              <Text style={styles.label}>GOOGLE PLAY STORE LINK (OPTIONAL)</Text>
+              <Text style={styles.label}>APP LINK</Text>
               <TextInput
-                value={storeUrl}
-                onChangeText={setStoreUrl}
-                placeholder="https://play.google.com/store/apps/details?id=..."
+                value={firstStoreField.value}
+                onChangeText={(v) => {
+                  if (firstStoreField.kind === 'play') setStoreUrl(v); else setAppleStoreUrl(v);
+                }}
+                placeholder="Play Store or App Store link"
                 placeholderTextColor={colors.subtle}
                 autoCapitalize="none"
                 keyboardType="url"
                 autoCorrect={false}
                 style={styles.input}
               />
-              <Text style={styles.label}>APPLE APP STORE LINK (OPTIONAL)</Text>
-              <TextInput
-                value={appleStoreUrl}
-                onChangeText={setAppleStoreUrl}
-                placeholder="https://apps.apple.com/app/id..."
-                placeholderTextColor={colors.subtle}
-                autoCapitalize="none"
-                keyboardType="url"
-                autoCorrect={false}
-                style={styles.input}
-              />
+              {!otherStoreField && (storeUrl.trim() || appleStoreUrl.trim()) ? (
+                <Text style={styles.storeHint}>Now add the other store so we can read both listings.</Text>
+              ) : null}
+              {otherStoreField ? (
+                <>
+                  <Text style={[styles.label, { marginTop: spacing.md }]}>APP LINK (OPTIONAL)</Text>
+                  <TextInput
+                    value={otherStoreField.value}
+                    onChangeText={(v) => {
+                      if (otherStoreField.kind === 'play') setStoreUrl(v); else setAppleStoreUrl(v);
+                    }}
+                    placeholder="The other store's link"
+                    placeholderTextColor={colors.subtle}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                    autoCorrect={false}
+                    style={styles.input}
+                  />
+                </>
+              ) : null}
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
               <Pressable onPress={runAi} disabled={!canRunAi} style={[styles.cta, !canRunAi && styles.ctaDisabled]}>
                 {aiLoading ? (
@@ -377,6 +406,7 @@ const styles = StyleSheet.create({
   ctaDisabled: { opacity: 0.55 },
   ctaText: { color: colors.surface, fontSize: 14, fontWeight: '800' },
   errorText: { color: colors.danger, fontSize: 12.5, fontWeight: '600' },
+  storeHint: { color: colors.muted, fontSize: 12, marginTop: 8 },
   hint: { color: colors.subtle, fontSize: 12, lineHeight: 17 },
   hintLink: { color: colors.accent, fontSize: 12.5, fontWeight: '800' },
   pillWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

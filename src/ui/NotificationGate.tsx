@@ -1,7 +1,8 @@
 // Mandatory notifications gate — shown before the home screen on every
-// fresh session until permission is granted. If the user declines, they
-// get an explanation ("required for Appsurge") with Enable/Not Now;
-// "Not Now" continues for the session but the gate re-prompts next launch.
+// fresh session until permission is granted. There is deliberately NO skip
+// path: the user must grant (via the OS prompt) or enable via system
+// Settings. The gate cannot be bypassed — without notifications Appsurge
+// can't deliver the publish/fail/plan-ready alerts it exists for.
 //
 // iOS: maps to the system permission prompt via expo-notifications.
 // Android 13+: POST_NOTIFICATIONS runtime permission via the same API.
@@ -9,12 +10,13 @@
 // resolves (granted) so those users are never blocked by an unaskable
 // permission.
 
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { colors, radius, shadow, spacing } from '../theme';
+import { trackNotificationPermission } from '../lib/analytics';
 
 export function NotificationGate({ onDone }: { onDone: (granted: boolean) => void }) {
   const insets = useSafeAreaInsets();
@@ -37,20 +39,45 @@ export function NotificationGate({ onDone }: { onDone: (granted: boolean) => voi
     setPhase('ask');
   }, [onDone]);
 
+  // Whether the OS had already denied before this session's first prompt
+  // (drives the denied_first analytics property).
+  const deniedBeforePrompt = useRef(false);
+  useEffect(() => {
+    void Notifications.getPermissionsAsync().then((settings) => {
+      deniedBeforePrompt.current = !settings.granted;
+    }).catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     void check();
   }, [check]);
+
+  // No-skip gate: when the user comes back from system Settings with
+  // notifications enabled, let them through immediately instead of leaving
+  // them stuck on this screen.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void Notifications.getPermissionsAsync()
+        .then((settings) => { if (settings.granted) onDone(true); })
+        .catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [onDone]);
 
   const request = async () => {
     setBusy(true);
     try {
       const result = await Notifications.requestPermissionsAsync();
       if (result.granted) {
+        trackNotificationPermission(true, deniedBeforePrompt.current);
         onDone(true);
       } else {
+        trackNotificationPermission(false, deniedBeforePrompt.current);
         setPhase('denied');
       }
     } catch {
+      trackNotificationPermission(false, deniedBeforePrompt.current);
       setPhase('denied');
     } finally {
       setBusy(false);
@@ -87,10 +114,6 @@ export function NotificationGate({ onDone }: { onDone: (granted: boolean) => voi
     void Linking.openSettings();
   };
 
-  const skip = () => {
-    if (!busy) onDone(false);
-  };
-
   return (
     <View style={[styles.screen, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={styles.iconWrap}>
@@ -120,10 +143,7 @@ export function NotificationGate({ onDone }: { onDone: (granted: boolean) => voi
             )}
           </Pressable>
           <Pressable onPress={openSettings} hitSlop={10} disabled={busy}>
-            <Text style={styles.laterLink}>Open Settings instead</Text>
-          </Pressable>
-          <Pressable onPress={skip} hitSlop={10} disabled={busy}>
-            <Text style={styles.laterLink}>Continue without notifications</Text>
+            <Text style={styles.laterLink}>Open Settings</Text>
           </Pressable>
         </>
       ) : (
@@ -135,9 +155,6 @@ export function NotificationGate({ onDone }: { onDone: (granted: boolean) => voi
                 <Text style={styles.ctaText}>Allow notifications</Text>
               </>
             )}
-          </Pressable>
-          <Pressable onPress={skip} hitSlop={10} disabled={busy}>
-            <Text style={styles.laterLink}>Not now</Text>
           </Pressable>
         </>
       )}

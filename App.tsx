@@ -18,6 +18,7 @@ import { maybeHandleInitialUrl, consumeOAuthDeepLink, isCompletionUrl, isOAuthDe
 import { subscribeWebViewAuth, dismissWebViewAuth } from './src/lib/webViewAuthPresenter';
 import { WebViewAuthModal, type WebViewAuthRequest } from './src/ui/WebViewAuthModal';
 import { NotificationGate } from './src/ui/NotificationGate';
+import { trackAppOpened, trackTabViewed } from './src/lib/analytics';
 import { Linking } from 'react-native';
 
 const ONBOARDING_KEY = '@appsurge/onboarding_seen_v1';
@@ -97,6 +98,13 @@ function RootNavigator() {
   const [notifyDoneFor, setNotifyDoneFor] = React.useState<string | null>(null);
   const notifyDone = notifyDoneFor !== null && notifyDoneFor === (user?.id ?? '');
 
+  // Fire-and-forget lifecycle analytics. App Opened fires once per
+  // RootNavigator mount (the navigator persists for the app's lifetime).
+  // Lives ABOVE the early returns — hooks must run on every render.
+  React.useEffect(() => {
+    trackAppOpened();
+  }, []);
+
   if (loading || onboarding === 'checking' || (authed && setup === 'checking')) {
     return <View style={styles.loading}><ActivityIndicator color={colors.accent} /></View>;
   }
@@ -115,7 +123,14 @@ function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme}
+      onStateChange={(navState) => {
+        if (!navState) return;
+        // Tab switches surface as route-name changes in the active stack.
+        const route = navState.routes[navState.index];
+        const name = route?.state?.routes?.[route.state.index ?? 0]?.name ?? route?.name;
+        if (name) trackTabViewed(name);
+      }}>
       {/* Translucent so the warm canvas draws behind the status bar clock/battery */}
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <Stack.Navigator screenOptions={{ headerShown: false }}>

@@ -14,6 +14,7 @@ import type { MobilePlatform } from '../lib/platformAuth';
 import { disconnectPlatform } from '../lib/cloudStore';
 import { useConnections } from '../hooks/useAppData';
 import { loadAppRecord, updateAppDetails, type AppRecord } from '../lib/cloudStore';
+import { trackConnectFailed, trackConnectCancelled, trackPlatformDisconnected, trackAppDetailsUpdated, trackDisplayNameUpdated } from '../lib/analytics';
 import { Connection } from '../types';
 import { colors, globalStyles, radius, shadow, spacing } from '../theme';
 
@@ -36,6 +37,18 @@ export function SettingsScreen() {
   const [name, setName] = useState('');
   const [storeUrl, setStoreUrl] = useState('');
   const [appleStoreUrl, setAppleStoreUrl] = useState('');
+  // First store link is required; the opposite store's optional field appears
+  // once the first one is filled (mirrors the setup wizard).
+  const settingsStoreFields: { kind: 'play' | 'apple'; value: string }[] = [
+    { kind: 'play', value: storeUrl },
+    { kind: 'apple', value: appleStoreUrl },
+  ];
+  const settingsFilled = settingsStoreFields.filter((f) => f.value.trim().length > 0);
+  const settingsFirst = settingsFilled[0] ?? settingsStoreFields[0];
+  const settingsOther = settingsFilled.length === 1
+    ? settingsStoreFields.find((f) => f.kind !== settingsFilled[0].kind)
+    : null;
+  const settingsVisibleFields = settingsOther ? [settingsFirst, settingsOther] : [settingsFirst];
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -55,10 +68,15 @@ export function SettingsScreen() {
 
   const saveApp = async () => {
     if (saving) return;
+    if (!storeUrl.trim() && !appleStoreUrl.trim()) {
+      setSaveError('Add your Play Store or App Store link — we read the listing to learn your app.');
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
       const saved = await updateAppDetails({ name, storeUrl, appleStoreUrl, description });
+      trackAppDetailsUpdated();
       setApp(saved);
       setEditOpen(false);
     } catch (cause) {
@@ -104,12 +122,15 @@ export function SettingsScreen() {
     try {
       const outcome = await startPlatformConnect(id);
       if (outcome.kind === 'error') {
+        trackConnectFailed(id, outcome.message);
         Alert.alert(`Couldn't connect ${platformLabel}`, outcome.message);
       } else if (outcome.kind === 'connected') {
         queryClient.invalidateQueries({ queryKey: ['connections'] });
+      } else if (outcome.kind === 'cancelled') {
+        trackConnectCancelled(id);
       }
-      // 'cancelled' — user backed out; nothing to say.
-    } catch {
+    } catch (cause) {
+      trackConnectFailed(id, cause instanceof Error ? cause.message : 'unknown');
       Alert.alert(`Couldn't connect ${platformLabel}`, 'Check your internet and try again.');
     } finally {
       setConnectingId(null);
@@ -125,6 +146,7 @@ export function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Disconnect', style: 'destructive', onPress: () => {
         const id = labelToId[platformLabel] ?? platformLabel.toLowerCase();
+        trackPlatformDisconnected(id);
         void disconnectPlatform(id).catch(() => undefined);
         queryClient.setQueryData(['connections'], (current: Connection[] = []) => current.map((item) => item.platform === platformLabel ? { ...item, connected: false } : item));
       } },
@@ -143,6 +165,7 @@ export function SettingsScreen() {
     setNameError('');
     try {
       await renameSelf(draftName);
+      trackDisplayNameUpdated();
       setEditingName(false);
     } catch (cause) {
       setNameError(cause instanceof Error ? cause.message : "We couldn't save your name. Try again.");
@@ -203,10 +226,30 @@ export function SettingsScreen() {
         <View style={styles.editStack}>
           <Text style={styles.fieldLabel}>APP NAME</Text>
           <TextInput value={name} onChangeText={setName} style={styles.input} placeholderTextColor={colors.subtle} placeholder="My app" />
-          <Text style={styles.fieldLabel}>GOOGLE PLAY LINK</Text>
-          <TextInput value={storeUrl} onChangeText={setStoreUrl} style={styles.input} placeholderTextColor={colors.subtle} autoCapitalize="none" keyboardType="url" placeholder="https://play.google.com/..." />
-          <Text style={styles.fieldLabel}>APPLE APP STORE LINK</Text>
-          <TextInput value={appleStoreUrl} onChangeText={setAppleStoreUrl} style={styles.input} placeholderTextColor={colors.subtle} autoCapitalize="none" keyboardType="url" placeholder="https://apps.apple.com/..." />
+          <Text style={styles.fieldLabel}>APP LINK</Text>
+          <TextInput
+            value={settingsVisibleFields[0].value}
+            onChangeText={(v) => { if (settingsVisibleFields[0].kind === 'play') setStoreUrl(v); else setAppleStoreUrl(v); }}
+            style={styles.input}
+            placeholderTextColor={colors.subtle}
+            autoCapitalize="none"
+            keyboardType="url"
+            placeholder="Play Store or App Store link"
+          />
+          {settingsVisibleFields[1] ? (
+            <>
+              <Text style={styles.fieldLabel}>APP LINK (OPTIONAL)</Text>
+              <TextInput
+                value={settingsVisibleFields[1].value}
+                onChangeText={(v) => { if (settingsVisibleFields[1].kind === 'play') setStoreUrl(v); else setAppleStoreUrl(v); }}
+                style={styles.input}
+                placeholderTextColor={colors.subtle}
+                autoCapitalize="none"
+                keyboardType="url"
+                placeholder="The other store's link"
+              />
+            </>
+          ) : null}
           <Text style={styles.fieldLabel}>DESCRIPTION</Text>
           <TextInput value={description} onChangeText={setDescription} style={[styles.input, styles.inputMultiline]} multiline placeholderTextColor={colors.subtle} placeholder="What does your app do? Who is it for?" />
           {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
@@ -224,7 +267,7 @@ export function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.appName}>{app?.name || 'Set up your app'}</Text>
             <Text numberOfLines={2} style={styles.appDesc}>{app?.audience || 'Add a description so we can tailor your content.'}</Text>
-            {app?.storeUrl ? <Text numberOfLines={1} style={styles.appUrl}>{app.storeUrl}</Text> : null}
+            {app?.storeUrl || app?.appleStoreUrl ? <Text numberOfLines={1} style={styles.appUrl}>{app?.storeUrl || app?.appleStoreUrl}</Text> : null}
           </View>
           <Pressable onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}>
             <Icon name="create-outline" size={17} color={colors.accent} />

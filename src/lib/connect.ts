@@ -43,6 +43,7 @@ import {
 } from './platformAuth';
 import { buildWeeklyPlan, saveConnection, type ConnectionRecord } from './cloudStore';
 import { presentWebViewAuth, dismissWebViewAuth } from './webViewAuthPresenter';
+import { trackConnectStarted, trackSocialAccountConnected } from './analytics';
 
 const PENDING_KEY = '@appsurge/oauth_pending_v1';
 
@@ -173,6 +174,7 @@ async function takePending(): Promise<PendingHandoff | null> {
 
 export async function startPlatformConnect(platform: MobilePlatform): Promise<ConnectOutcome> {
   const config = PLATFORM_CONFIGS[platform];
+  trackConnectStarted(platform);
   try {
     const clientIds = await getOAuthClientIds();
     const clientId = clientIds[platform];
@@ -389,6 +391,7 @@ export async function consumeOAuthDeepLink(rawUrl: string): Promise<ConnectOutco
     // moment their first platform is live.
     void buildWeeklyPlan().catch(() => undefined);
 
+    trackSocialAccountConnected(handoff.platform);
     const outcome: ConnectOutcome = { kind: 'connected', platform: handoff.platform, record };
     publishOutcome(outcome);
     return outcome;

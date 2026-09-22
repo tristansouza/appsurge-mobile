@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User } from '../types';
+import { identify, resetIdentity } from './analytics';
 
 // Demo build (EXPO_PUBLIC_DEMO_BUILD=1, set via app.json extra): no Firebase,
 // no network — just a realistic signed-in user so store captures show real
@@ -50,6 +51,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       if (active) {
         setUser(nextUser);
         setLoading(false);
+        // Analytics identity follows the Firebase session: identified on
+        // sign-in, anonymous again on sign-out.
+        if (nextUser) identify(nextUser.id);
+        else resetIdentity();
       }
     });
     const fallback = setTimeout(() => active && setLoading(false), 2500);

@@ -10,6 +10,7 @@ import { approveAllPlanSlots, buildWeeklyPlan, setSlotStatus, type PlanSlotRecor
 import { loadConnections } from '../lib/cloudStore';
 import { Post, PostStatus } from '../types';
 import { colors, globalStyles, radius, shadow, spacing } from '../theme';
+import { trackPlanRegenerateStarted, trackPlanGenerated, trackPlanGenerationFailed, trackReviewOpened, trackPlanApproved, trackPlanApprovalFailed, trackPostEdited, trackSlidesGenerated } from '../lib/analytics';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try { ImagePicker = require('expo-image-picker'); } catch {}
@@ -74,11 +75,15 @@ export function QueueScreen() {
     if (regenBusy) return;
     setRegenBusy(true);
     setRegenError('');
+    const startedAt = Date.now();
     try {
+      trackPlanRegenerateStarted();
       await buildWeeklyPlan(); // AI writes a fresh 7-day plan into Firestore
       await queryClient.invalidateQueries({ queryKey: ['posts'] });
       await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+      trackPlanGenerated(Date.now() - startedAt);
     } catch (cause) {
+      trackPlanGenerationFailed(cause instanceof Error ? cause.message : 'unknown');
       setRegenError(cause instanceof Error ? cause.message : "We couldn't build a new plan. Try again.");
     } finally {
       setRegenBusy(false);
@@ -87,6 +92,7 @@ export function QueueScreen() {
 
   const openReview = () => {
     if (!reviewPosts.length) return;
+    trackReviewOpened(reviewPosts.length);
     setReviewDrafts(reviewPosts.map((post) => ({ ...post })));
     setWalkthroughIndex(0);
     setReviewStep('terms');
@@ -109,6 +115,7 @@ export function QueueScreen() {
 
   const finishWalkthrough = async () => {
     setReviewStep('generating');
+    const startedAt = Date.now();
     try {
       // Persist each reviewed post: caption edits and any rejects.
       for (const draft of reviewDrafts) {
@@ -121,8 +128,10 @@ export function QueueScreen() {
       await approveAllPlanSlots();
       await queryClient.invalidateQueries({ queryKey: ['posts'] });
       await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+      trackPlanApproved(reviewDrafts.length, Date.now() - startedAt);
       setReviewStep('closed');
     } catch (cause) {
+      trackPlanApprovalFailed(cause instanceof Error ? cause.message : 'unknown');
       setRegenError(cause instanceof Error ? cause.message : "We couldn't approve the plan. Try again.");
       setReviewStep('closed');
     }
@@ -141,13 +150,16 @@ export function QueueScreen() {
     if (!editing || slidesBusy) return;
     setSlidesBusy(true);
     setSlideError('');
+    const startedAt = Date.now();
     try {
       const prompts = captionToSlidePrompts({ title: editing.title, caption: editing.caption });
       const results = await generateSlideshow({ prompts, aspectRatio: '9:16' });
       const dataUrls = results.filter((r) => r.ok && r.dataUrl).map((r) => r.dataUrl!);
       if (!dataUrls.length) throw new Error(results[0]?.error ?? 'No slides were generated.');
       setEditing({ ...editing, slides: dataUrls });
+      trackSlidesGenerated(true, dataUrls.length, Date.now() - startedAt);
     } catch (cause) {
+      trackSlidesGenerated(false, 0, Date.now() - startedAt);
       setSlideError(cause instanceof Error ? cause.message : "We couldn't generate your slides. Try again.");
     } finally {
       setSlidesBusy(false);
@@ -156,6 +168,7 @@ export function QueueScreen() {
 
   const saveEdit = () => {
     if (!editing) return;
+    trackPostEdited(creating);
     if (creating) queryClient.setQueryData(['posts'], (current: Post[] = []) => [editing, ...current]);
     else updatePost(editing.id, editing);
     setEditing(null);

@@ -13,14 +13,12 @@ export const posts: Post[] = [
   { id: '2', platform: 'TikTok', status: 'Needs review', title: 'Behind the scenes', caption: 'A little look at what goes into building a brand people remember.', date: dayLabel(1), time: '12:30 PM', mediaColor: '#BCD9D2', mediaLabel: 'Studio desk' },
   { id: '3', platform: 'YouTube', status: 'Scheduled', title: 'Build your content system', caption: 'The repeatable content system we use to turn ideas into momentum.', date: dayLabel(2), time: '10:00 AM', mediaColor: '#C9C0E5', mediaLabel: 'Content planning' },
   { id: '4', platform: 'Instagram', status: 'Scheduled', title: 'Small wins compound', caption: 'The quiet consistency behind every big result.', date: dayLabel(3), time: '8:00 AM', mediaColor: '#EED8A8', mediaLabel: 'Morning light' },
-  { id: '5', platform: 'X', status: 'Published', title: 'A better content week', caption: 'Less scrambling. More signal. A simple weekly plan changes everything.', date: dayLabel(-1), time: '11:30 AM', mediaColor: '#D8D0C6', mediaLabel: 'Workspace' },
 ];
 
 export const connections: Connection[] = [
   { platform: 'Instagram', handle: '@appsurge', connected: true, color: '#E76982' },
   { platform: 'TikTok', handle: '@appsurge', connected: true, color: '#262626' },
   { platform: 'YouTube', handle: 'Appsurge', connected: true, color: '#EA4335' },
-  { platform: 'X', handle: '@appsurge', connected: false, color: '#262626' },
   { platform: 'Threads', handle: '@appsurge', connected: false, color: '#262626' },
 ];
 
