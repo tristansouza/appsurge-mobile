@@ -18,6 +18,7 @@ import {
   buildWeeklyPlan,
   loadAppRecord,
   loadConnections,
+  logActivity,
   saveAppRecord,
   type AppRecord,
 } from '../lib/cloudStore';
@@ -154,6 +155,15 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
       await buildWeeklyPlan();
       trackPlanGenerated(Date.now() - startedAt);
       trackSetupCompleted(platforms.length);
+      // First-run milestone on the Updates tab.
+      void logActivity({
+        kind: 'app-registered',
+        source: 'mobile',
+        title: `${saved.name} is set up`,
+        body: platforms.length
+          ? `Weekly plan ready for ${platforms.length} platform${platforms.length === 1 ? '' : 's'}.`
+          : 'Connect a platform to start publishing.',
+      }).catch(() => undefined);
       onComplete(saved);
     } catch (cause) {
       trackPlanGenerationFailed(cause instanceof Error ? cause.message : 'unknown');

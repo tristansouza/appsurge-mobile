@@ -8,6 +8,7 @@ import { colors, warmShadowColor } from '../theme';
 import { trackTabViewed } from '../lib/analytics';
 import { HomeScreen } from '../screens/HomeScreen';
 import { QueueScreen } from '../screens/QueueScreen';
+import { UpdatesScreen } from '../screens/UpdatesScreen';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 
@@ -16,6 +17,7 @@ const Tab = createBottomTabNavigator();
 const tabs = {
   Home: 'home-outline',
   Queue: 'sparkles-outline',
+  Updates: 'notifications-outline',
   Analytics: 'stats-chart-outline',
   Settings: 'settings-outline',
 } as const;
@@ -24,6 +26,7 @@ const tabs = {
 const sfSymbols = {
   Home: { focusedIcon: { sfSymbol: 'house.fill' }, unfocusedIcon: { sfSymbol: 'house' } },
   Queue: { focusedIcon: { sfSymbol: 'sparkles' }, unfocusedIcon: { sfSymbol: 'sparkles' } },
+  Updates: { focusedIcon: { sfSymbol: 'bell.fill' }, unfocusedIcon: { sfSymbol: 'bell' } },
   Analytics: { focusedIcon: { sfSymbol: 'chart.bar.fill' }, unfocusedIcon: { sfSymbol: 'chart.bar' } },
   Settings: { focusedIcon: { sfSymbol: 'gearshape.fill' }, unfocusedIcon: { sfSymbol: 'gearshape' } },
 } as const;
@@ -31,6 +34,7 @@ const sfSymbols = {
 const scenes = SceneMap({
   Home: () => <HomeScreen />,
   Queue: () => <QueueScreen />,
+  Updates: () => <UpdatesScreen />,
   Analytics: () => <AnalyticsScreen />,
   Settings: () => <SettingsScreen />,
 });
@@ -38,6 +42,7 @@ const scenes = SceneMap({
 const routes = [
   { key: 'Home', title: 'Home', ...sfSymbols.Home },
   { key: 'Queue', title: 'Queue', badge: '2', badgeBackgroundColor: colors.accent, badgeTextColor: colors.surface, ...sfSymbols.Queue },
+  { key: 'Updates', title: 'Updates', ...sfSymbols.Updates },
   { key: 'Analytics', title: 'Analytics', ...sfSymbols.Analytics },
   { key: 'Settings', title: 'Settings', ...sfSymbols.Settings },
 ];
@@ -105,6 +110,7 @@ function AndroidTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Queue" component={QueueScreen} options={{ tabBarBadge: 2, tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.surface, fontSize: 9 } }} />
+      <Tab.Screen name="Updates" component={UpdatesScreen} />
       <Tab.Screen name="Analytics" component={AnalyticsScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>

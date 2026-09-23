@@ -7,7 +7,7 @@ import { Icon } from '../components/Icon';
 import { PostCard } from '../components/PostCard';
 import { usePosts } from '../hooks/useAppData';
 import { captionToSlidePrompts, generateSlideshow } from '../lib/gateway';
-import { approveAllPlanSlots, buildWeeklyPlan, setSlotStatus, type PlanSlotRecord } from '../lib/cloudStore';
+import { approveAllPlanSlots, buildWeeklyPlan, logActivity, setSlotStatus, type PlanSlotRecord } from '../lib/cloudStore';
 import { loadConnections } from '../lib/cloudStore';
 import { Post, PostStatus } from '../types';
 import { colors, globalStyles, radius, shadow, spacing } from '../theme';
@@ -129,6 +129,13 @@ export function QueueScreen() {
       await approveAllPlanSlots();
       await queryClient.invalidateQueries({ queryKey: ['posts'] });
       await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+      // Surface the approval on the Updates tab (and on desktop via sync).
+      void logActivity({
+        kind: 'plan-approved',
+        source: 'mobile',
+        title: 'Weekly plan approved',
+        body: `${reviewDrafts.length} post${reviewDrafts.length === 1 ? '' : 's'} approved from your phone.`,
+      }).catch(() => undefined);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       trackPlanApproved(reviewDrafts.length, Date.now() - startedAt);
       setReviewStep('closed');

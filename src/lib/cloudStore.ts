@@ -27,7 +27,7 @@ import {
 } from 'firebase/firestore';
 import { auth } from './firebase';
 import { generateWeeklyPlan } from './aiPlanner';
-import type { PlatformId } from '../types';
+import type { ActivityEvent, PlatformId } from '../types';
 
 const db = getFirestore(auth.app);
 
@@ -455,4 +455,39 @@ export async function buildWeeklyPlan(): Promise<WeeklyPlanRecord> {
   const plan: WeeklyPlanRecord = { slots: withSchedule, generatedAt: now.toISOString(), status: 'ready' };
   await saveWeeklyPlan(plan);
   return plan;
+}
+
+// ---- Activity feed (Updates tab) -------------------------------------------
+//
+// `users/{uid}/activity/{eventId}` — append-only rows written by BOTH
+// clients (mobile writes here directly; the desktop app follows the same
+// schema, see docs/DESKTOP-SYNC-CONTRACT.md). The Updates tab reads this
+// collection so post outcomes from the desktop autoposter show up on the
+// phone without any direct desktop↔mobile channel.
+
+export async function logActivity(event: Omit<ActivityEvent, 'id'> & { id?: string }): Promise<string> {
+  const uid = requireUser();
+  const id = event.id ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  await setDoc(doc(db, 'users', uid, 'activity', id), { ...event, id, createdAt: serverTimestamp() });
+  return id;
+}
+
+export async function loadActivity(limitCount = 60): Promise<ActivityEvent[]> {
+  const uid = requireUser();
+  const snapshot = await getDocs(
+    query(collection(db, 'users', uid, 'activity'), orderBy('createdAt', 'desc'), limit(limitCount)),
+  );
+  return snapshot.docs.map((entry) => {
+    const data = entry.data() as Omit<ActivityEvent, 'id'>;
+    return { ...data, source: data.source ?? ('system' as const), id: entry.id };
+  });
+}
+
+/** Marks every event read (the Updates tab calls this on focus). */
+export async function markActivityRead(ids?: string[]): Promise<void> {
+  const uid = requireUser();
+  const targets = ids?.length
+    ? ids
+    : (await loadActivity(200)).filter((event) => !event.read).map((event) => event.id);
+  await Promise.all(targets.map((id) => setDoc(doc(db, 'users', uid, 'activity', id), { read: true }, { merge: true })));
 }

@@ -74,3 +74,38 @@ export type AnalyticsSummary = {
   delta: number;
   points: AnalyticsPoint[];
 };
+
+/** What happened — drives the icon/text on the Updates tab. */
+export type ActivityKind =
+  | 'post-published'
+  | 'post-failed'
+  | 'post-scheduled'
+  | 'plan-generated'
+  | 'plan-approved'
+  | 'platform-connected'
+  | 'platform-disconnected'
+  | 'app-registered'
+  | 'note';
+
+/** Where the event came from — the Updates tab tags each row. */
+export type ActivitySource = 'desktop' | 'mobile' | 'system';
+
+/**
+ * One row on the Updates tab. Written to `users/{uid}/activity/{eventId}` by
+ * BOTH clients (see docs/DESKTOP-SYNC-CONTRACT.md for the desktop side).
+ */
+export type ActivityEvent = {
+  id: string;
+  kind: ActivityKind;
+  /** Platform id (tiktok/instagram/youtube/threads) when relevant. */
+  platform?: string;
+  /** Short headline, e.g. "Published to TikTok". */
+  title: string;
+  /** One-line detail, e.g. the post hook or failure reason. */
+  body: string;
+  /** Firestore timestamp — set by the writer. */
+  createdAt?: unknown;
+  /** Unread rows show a dot; cleared by markActivityRead. */
+  read?: boolean;
+  source: ActivitySource;
+};

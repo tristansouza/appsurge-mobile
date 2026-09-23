@@ -41,7 +41,16 @@ import {
   LAUNCHPAD_ORIGIN,
   type MobilePlatform,
 } from './platformAuth';
-import { buildWeeklyPlan, saveConnection, type ConnectionRecord } from './cloudStore';
+import { buildWeeklyPlan, logActivity, saveConnection, type ConnectionRecord } from './cloudStore';
+
+// Platform id → display name (mirrors dataSource.ts; kept local so the
+// connect flow never imports the demo-data module).
+const PLATFORM_LABELS: Record<string, string> = {
+  tiktok: 'TikTok',
+  instagram: 'Instagram',
+  youtube: 'YouTube',
+  threads: 'Threads',
+};
 import { presentWebViewAuth, dismissWebViewAuth } from './webViewAuthPresenter';
 import { trackConnectStarted, trackSocialAccountConnected } from './analytics';
 
@@ -390,6 +399,16 @@ export async function consumeOAuthDeepLink(rawUrl: string): Promise<ConnectOutco
     // Fire-and-forget: give the user a ready-to-review weekly plan the
     // moment their first platform is live.
     void buildWeeklyPlan().catch(() => undefined);
+
+    // Update the phone's Updates tab (and the desktop's, via the same
+    // Firestore collection).
+    void logActivity({
+      kind: 'platform-connected',
+      platform: handoff.platform,
+      source: 'mobile',
+      title: `${PLATFORM_LABELS[handoff.platform] ?? handoff.platform} connected`,
+      body: 'Ready to publish.',
+    }).catch(() => undefined);
 
     trackSocialAccountConnected(handoff.platform);
     const outcome: ConnectOutcome = { kind: 'connected', platform: handoff.platform, record };
