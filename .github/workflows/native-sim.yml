@@ -361,6 +361,7 @@ jobs:
           V_GATEWAY_URL: ${{ secrets.EXPO_PUBLIC_GATEWAY_URL }}
           V_GATEWAY_API_KEY: ${{ secrets.EXPO_PUBLIC_GATEWAY_API_KEY }}
           V_LAUNCHPAD_ORIGIN: ${{ secrets.EXPO_PUBLIC_LAUNCHPAD_ORIGIN }}
+          V_MIXPANEL_TOKEN: ${{ secrets.EXPO_PUBLIC_MIXPANEL_TOKEN }}
         run: |
           cat > .env <<EOF
           EXPO_PUBLIC_FIREBASE_API_KEY=$V_API_KEY
@@ -375,6 +376,7 @@ jobs:
           EXPO_PUBLIC_GATEWAY_URL=$V_GATEWAY_URL
           EXPO_PUBLIC_GATEWAY_API_KEY=$V_GATEWAY_API_KEY
           EXPO_PUBLIC_LAUNCHPAD_ORIGIN=$V_LAUNCHPAD_ORIGIN
+          EXPO_PUBLIC_MIXPANEL_TOKEN=$V_MIXPANEL_TOKEN
           EOF
           grep -c '=' .env | xargs echo "env vars written:"
 
