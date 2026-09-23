@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
@@ -26,6 +26,7 @@ export function SignInScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const submit = async () => {
     clearError();
@@ -77,6 +78,7 @@ export function SignInScreen() {
   return (
     <View style={[styles.safe, { paddingTop: insets.top + spacing.xl, paddingBottom: insets.bottom + spacing.lg }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent} bounces={false} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.brand}>
           <Image source={require('../../appsurgeicon-fullbleed.png')} style={styles.appIcon} />
           <Text style={styles.brandText}>Appsurge</Text>
@@ -100,10 +102,10 @@ export function SignInScreen() {
             </>
           )}
           <Text style={styles.label}>EMAIL</Text>
-          <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="you@company.com" placeholderTextColor={colors.subtle} style={styles.input} />
+          <TextInput autoCapitalize="none" keyboardType="email-address" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} value={email} onChangeText={setEmail} placeholder="you@company.com" placeholderTextColor={colors.subtle} style={styles.input} />
           <Text style={[styles.label, { marginTop: spacing.lg }]}>PASSWORD</Text>
           <View style={styles.passwordWrap}>
-            <TextInput secureTextEntry={!showPassword} value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={colors.subtle} style={[styles.input, styles.passwordInput]} />
+            <TextInput ref={passwordRef} secureTextEntry={!showPassword} returnKeyType="go" submitBehavior="submit" onSubmitEditing={() => { if (!busy) void submit(); }} value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={colors.subtle} style={[styles.input, styles.passwordInput]} />
             <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={10} style={styles.eyeBtn} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
               <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.muted} />
             </Pressable>
@@ -120,6 +122,7 @@ export function SignInScreen() {
           </Pressable>
           <Text style={styles.hint}>Tip: use your work email — your whole team can share the same plan.</Text>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -128,6 +131,7 @@ export function SignInScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.canvas, paddingHorizontal: spacing.xl },
   container: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center' },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   appIcon: { width: 32, height: 32, borderRadius: 9 },
   brandText: { color: colors.ink, fontSize: 19, fontWeight: '800', letterSpacing: -0.5 },

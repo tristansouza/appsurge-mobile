@@ -23,6 +23,7 @@
     "expo": "~57.0.24",
     "expo-crypto": "~57.0.3",
     "expo-font": "~57.0.4",
+    "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.19",
     "expo-notifications": "~57.0.20",
     "expo-status-bar": "~57.0.1",
@@ -43,5 +44,10 @@
     "babel-preset-expo": "~57.0.12",
     "expo-splash-screen": "^57.0.9",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "metro": "0.84.5",
+    "metro-config": "0.84.5",
+    "metro-transform-worker": "0.84.5"
   }
 }

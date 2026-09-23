@@ -22,6 +22,7 @@ import {
   type AppRecord,
 } from '../lib/cloudStore';
 import { startPlatformConnect, subscribeToConnectOutcomes, type ConnectOutcome } from '../lib/connect';
+import * as Haptics from 'expo-haptics';
 import { trackSetupStarted, trackSetupRecommendations, trackSetupCompleted, trackPlanGenerated, trackPlanGenerationFailed } from '../lib/analytics';
 import { PLATFORM_CONFIGS, humanLabel } from '../lib/platformAuth';
 import { PlatformId } from '../types';
@@ -86,9 +87,11 @@ export function AppSetupScreen({ onComplete }: { onComplete: (app: AppRecord | n
   React.useEffect(() => {
     const unsubscribe = subscribeToConnectOutcomes((outcome: ConnectOutcome) => {
       if (outcome.kind === 'connected') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
         setConnected((current) => ({ ...current, [outcome.platform]: true }));
         setError('');
       } else if (outcome.kind === 'error') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
         setError(outcome.message);
       }
     });

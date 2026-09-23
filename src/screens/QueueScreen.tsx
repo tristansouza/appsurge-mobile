@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../components/Icon';
 import { PostCard } from '../components/PostCard';
@@ -128,6 +129,7 @@ export function QueueScreen() {
       await approveAllPlanSlots();
       await queryClient.invalidateQueries({ queryKey: ['posts'] });
       await queryClient.invalidateQueries({ queryKey: ['weekly-plan'] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       trackPlanApproved(reviewDrafts.length, Date.now() - startedAt);
       setReviewStep('closed');
     } catch (cause) {
@@ -301,7 +303,7 @@ export function QueueScreen() {
         <View style={styles.modalBackdrop}>
           <View style={[styles.modal, { maxHeight: '88%' }]}>
             {reviewStep === 'terms' && (
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.modalHeader}>
                   <Text style={globalStyles.h2}>Before we post</Text>
                   <Pressable onPress={() => setReviewStep('closed')}><Icon name="close" size={22} color={colors.muted} /></Pressable>
@@ -330,7 +332,7 @@ export function QueueScreen() {
                   <Pressable onPress={() => setReviewStep('closed')}><Icon name="close" size={22} color={colors.muted} /></Pressable>
                 </View>
                 {reviewDrafts[walkthroughIndex] ? (
-                  <ScrollView showsVerticalScrollIndicator={false}>
+                  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                     <Text style={styles.walkPlatform}>{reviewDrafts[walkthroughIndex].platform} · {reviewDrafts[walkthroughIndex].date}</Text>
                     <Text style={styles.walkHook}>{reviewDrafts[walkthroughIndex].title}</Text>
                     <Text style={styles.label}>DESCRIPTION</Text>
@@ -385,7 +387,7 @@ export function QueueScreen() {
 
       <Modal visible={Boolean(editing)} animationType="slide" transparent onRequestClose={() => setEditing(null)}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modal}>
+          <KeyboardAvoidingView style={styles.modal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.modalHeader}>
               <Text style={globalStyles.h2}>{creating ? 'Create post' : 'Edit post'}</Text>
               <Pressable onPress={() => setEditing(null)}>
@@ -393,6 +395,7 @@ export function QueueScreen() {
               </Pressable>
             </View>
             {editing && (
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flexGrow: 0 }}>
               <>
                 <Text style={styles.label}>TITLE</Text>
                 <TextInput value={editing.title} onChangeText={(title) => setEditing({ ...editing, title })} style={styles.smallInput} />
@@ -426,8 +429,9 @@ export function QueueScreen() {
                   <Text style={styles.saveText}>Save changes</Text>
                 </Pressable>
               </>
+              </ScrollView>
             )}
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

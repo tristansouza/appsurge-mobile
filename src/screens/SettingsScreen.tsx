@@ -190,7 +190,7 @@ export function SettingsScreen() {
 
   const insets = useSafeAreaInsets();
 
-  return <View style={[globalStyles.screen, { paddingTop: insets.top }]}><ScrollView contentContainerStyle={globalStyles.content} showsVerticalScrollIndicator={false}>
+  return <View style={[globalStyles.screen, { paddingTop: insets.top }]}><ScrollView contentContainerStyle={globalStyles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
     <Text style={styles.eyebrow}>YOUR WORKSPACE</Text>
     <Text style={globalStyles.h1}>Settings</Text>
     <View style={styles.profile}><Avatar initials={(session?.user.name ?? 'A').slice(0, 2).toUpperCase()} size={52} /><View style={{ flex: 1 }}>{editingName ? (
