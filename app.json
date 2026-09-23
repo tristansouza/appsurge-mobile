@@ -7,11 +7,6 @@
     "userInterfaceStyle": "light",
     "icon": "./appsurgeicon-fullbleed.png",
     "scheme": "appsurge",
-    "newArchEnabled": false,
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#FAF6F0"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.appsurge",
@@ -23,15 +18,19 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "com.appsurge",
-            "CFBundleURLSchemes": ["appsurge"]
+            "CFBundleURLSchemes": [
+              "appsurge"
+            ]
           },
           {
             "CFBundleURLName": "google-oauth",
-            "CFBundleURLSchemes": ["com.googleusercontent.apps.745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k"]
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.745082372444-dv2e4abdk5tcri9peg2hlc2agt48hh1k",
+              "com.googleusercontent.apps.745082372444-hic833u61q1nk8dn25f46mptifepj060"
+            ]
           }
         ]
       },
-      // Full-bleed icon on iOS too — same trimmed artwork, no white matte.
       "icon": "./appsurgeicon-fullbleed.png"
     },
     "android": {
@@ -46,12 +45,21 @@
       "expo-status-bar",
       "@react-native-google-signin/google-signin",
       [
+        "expo-splash-screen",
+        {
+          "image": "./appsurgeicon-fullbleed.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAF6F0"
+        }
+      ],
+      [
         "expo-web-browser",
         {
-          // iOS: our appsurge:// redirect completes the auth session.
           "appName": "appsurge"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
