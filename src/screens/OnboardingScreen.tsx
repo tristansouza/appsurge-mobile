@@ -31,7 +31,7 @@ const SLIDES: Slide[] = [
     iconColor: colors.lavender,
     iconBg: colors.lavenderSoft,
     title: 'Meet Appsurge',
-    body: 'Your AI content engine. Appsurge plans, writes, and schedules posts for TikTok, Instagram, YouTube, X, and Threads — every week, on autopilot.',
+    body: 'Your AI content engine. Appsurge plans, writes, and schedules posts for TikTok, Instagram, YouTube, and Threads — every week, on autopilot.',
   },
   {
     icon: 'phone-portrait-outline',
@@ -58,7 +58,7 @@ const SLIDES: Slide[] = [
       'Autopilot — the desktop app posts for you, on schedule',
       'Review anywhere — approve or tweak the weekly plan from your phone',
       'Made for apps — content tuned to sell your product',
-      'One plan, five platforms — TikTok, IG, YouTube, X, Threads',
+      'One plan, four platforms — TikTok, IG, YouTube, Threads',
     ],
   },
 ];
